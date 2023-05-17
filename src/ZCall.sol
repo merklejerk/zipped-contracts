@@ -2,13 +2,10 @@
 pragma solidity ^0.8.19;
 
 import "./Inflate2.sol";
+import "./RuntimeDeployer.sol";
 
-contract RuntimeDeployer {
-    constructor(bytes memory runtimeCode) {
-        assembly("memory-safe") { return(add(runtimeCode, 0x20), mload(runtimeCode)) }
-    }
-}
-
+/// @notice Zipped Contracts (v1.00.0)
+/// @author merklejerk (https://github.com/merklejerk)
 contract ZCall is Inflate2 {
     error OnlySelfError();
     error CreationFailedError();
@@ -189,7 +186,7 @@ contract ZCall is Inflate2 {
         }
         address unzipped;
         assembly {
-            unzipped := create2(0, add(initCode, 0x20), mload(initCode), 0)
+            unzipped := create(0, add(initCode, 0x20), mload(initCode))
         }
         if (unzipped == address(0)) {
             revert CreationFailedError();
