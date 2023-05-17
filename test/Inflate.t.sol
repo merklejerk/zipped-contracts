@@ -3,7 +3,7 @@ pragma solidity ^0.8.13;
 
 import "forge-std/Test.sol";
 import "forge-std/console.sol";
-import "../src/LibInflate.sol";
+import "../src/InflateLib.sol";
 import "../src/Inflate2.sol";
 
 contract InflateTest is Inflate2, Test {
@@ -19,45 +19,27 @@ contract InflateTest is Inflate2, Test {
         return address(new Storage(data));
     }
 
-    function testLibInflate_puffAt() external {
-        uint256 m;
+    function _unstore(address at, uint256 off, uint256 len) private view returns (bytes memory data) {
+        data = new bytes(len);
         assembly("memory-safe") {
-            pop(mload(add(mload(0x40), 92576)))
+            extcodecopy(at, add(data, 0x20), off, len)
         }
-        assembly { m := mload(0x40) }
+    }
+
+    function testLibInflate_puff() external {
+        bytes memory zippedData = _unstore(zippedInitCodeAt, 1, zippedInitCodeAt.code.length - 1);
         uint256 g = gasleft();
-        (LibInflate.ErrorCode err, bytes memory out) =
-            LibInflate.puffAt(zippedInitCodeAt, 1, zippedInitCodeAt.code.length - 1, 24427);
+        (, bytes memory out) = InflateLib.puff(zippedData, 24427);
         emit log_named_uint('gas used', g - gasleft());
-        assembly { m := sub(mload(0x40), m) }
-        emit log_named_uint('mem used', m);
         _testDeflated(out);
     }
 
-    // function testLibInflate_puff() external {
-    //     uint256 m;
-    //     assembly {
-    //         pop(mload(add(mload(0x40), 92576)))
-    //     }
-    //     // assembly { m := mload(0x40) }
-    //     uint256 g = gasleft();
-    //     (LibInflate.ErrorCode err, bytes memory out) =
-    //         LibInflate.puffAt(zippedInitCodeAt, 1, zippedInitCodeAt.code.length - 1, 24427);
-    //     emit log_named_uint('gas used', g - gasleft());
-    //     // assembly { m := sub(mload(0x40), m) }
-    //     emit log_named_uint('mem used', m);
-    //     _testDeflated(out);
-    // }
-
     function testInflate2() external {
-        uint256 m;
-        assembly { m := mload(0x40) }
         uint256 g = gasleft();
-        (ErrorCode err, bytes memory out) =
-            puffAt(zippedInitCodeAt, 1, zippedInitCodeAt.code.length - 1, 24427);
+        bytes memory out = this.inflateFrom(
+            zippedInitCodeAt, 1, zippedInitCodeAt.code.length - 1, 24427
+        );
         emit log_named_uint('gas used', g - gasleft());
-        assembly { m := sub(mload(0x40), m) }
-        emit log_named_uint('mem used', m);
         _testDeflated(out);
     }
 

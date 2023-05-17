@@ -1,8 +1,9 @@
-// SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.13;
+// SPDX-License-Identifier: Apache-2.0
+// Source (@adlerjohn): https://github.com/adlerjohn/inflate-sol/blob/2a88141f5226da9d0252be4a456a2e0b23ba3d0e/contracts/InflateLib.sol
+pragma solidity >=0.8.0 <0.9.0;
 
 /// @notice Based on https://github.com/madler/zlib/blob/master/contrib/puff
-library LibInflate {
+library InflateLib {
     // Maximum bits in a code
     uint256 constant MAXBITS = 15;
     // Maximum number of literal/length codes
@@ -789,17 +790,5 @@ library LibInflate {
         }
 
         return (err, s.output);
-    }
-
-    function puffAt(address at, uint256 dataOffset, uint256 dataLen, uint256 destlen)
-        internal
-        view
-        returns (ErrorCode, bytes memory)
-    {
-        bytes memory data = new bytes(dataLen);
-        assembly {
-            extcodecopy(at, add(data, 0x20), dataOffset, dataLen)
-        }
-        return puff(data, destlen);
     }
 }

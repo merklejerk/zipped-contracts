@@ -1,7 +1,11 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.19;
 
-/// @notice Based on https://github.com/madler/zlib/blob/master/contrib/puff
+/// @notice Solidity implementation of zlib deflate.
+/// @dev Optimized + optimistic form of:
+///      https://github.com/adlerjohn/inflate-sol/blob/2a88141f5226da9d0252be4a456a2e0b23ba3d0e/contracts/InflateLib.sol
+/// @author @adlerjohn (https://github.com/adlerjohn)
+/// @author @merklejerk (https://github.com/merklejerk)
 contract Inflate2 {
     // Maximum bits in a code
     uint256 constant MAXBITS = 15;
@@ -15,23 +19,20 @@ contract Inflate2 {
     uint256 constant FIXLCODES = 288;
 
     // Error codes
-    enum ErrorCode {
-        ERR_NONE, // 0 successful inflate
-        ERR_NOT_TERMINATED, // 1 available inflate data did not terminate
-        ERR_OUTPUT_EXHAUSTED, // 2 output space exhausted before completing inflate
-        ERR_INVALID_BLOCK_TYPE, // 3 invalid block type (type == 3)
-        ERR_STORED_LENGTH_NO_MATCH, // 4 stored block length did not match one's complement
-        ERR_TOO_MANY_LENGTH_OR_DISTANCE_CODES, // 5 dynamic block code description: too many length or distance codes
-        ERR_CODE_LENGTHS_CODES_INCOMPLETE, // 6 dynamic block code description: code lengths codes incomplete
-        ERR_REPEAT_NO_FIRST_LENGTH, // 7 dynamic block code description: repeat lengths with no first length
-        ERR_REPEAT_MORE, // 8 dynamic block code description: repeat more than specified lengths
-        ERR_INVALID_LITERAL_LENGTH_CODE_LENGTHS, // 9 dynamic block code description: invalid literal/length code lengths
-        ERR_INVALID_DISTANCE_CODE_LENGTHS, // 10 dynamic block code description: invalid distance code lengths
-        ERR_MISSING_END_OF_BLOCK, // 11 dynamic block code description: missing end-of-block code
-        ERR_INVALID_LENGTH_OR_DISTANCE_CODE, // 12 invalid literal/length or distance code in fixed or dynamic block
-        ERR_DISTANCE_TOO_FAR, // 13 distance is too far back in fixed or dynamic block
-        ERR_CONSTRUCT // 14 internal: error in construct()
-    }
+    error OutOfInputError(); // available inflate data did not terminate
+    error OutputExhaustedError(); // output space exhausted before completing inflate
+    error InvalidBlockTypeError(); // invalid block type (type == 3)
+    error StoredLengthNoMatchError(); // stored block length did not match one's complement
+    error TooManyLengthOrDistanceCodesError(); // dynamic block code description: too many length or distance codes
+    error CodeLengthsCodesIncompleteError(); // dynamic block code description: code lengths codes incomplete
+    error RepeatNoFirstLengthError(); // dynamic block code description: repeat lengths with no first length
+    error RepeatMoreError(); // dynamic block code description: repeat more than specified lengths
+    error InvalidLiteralLengthCodeLengthsError(); // dynamic block code description: invalid literal/length code lengths
+    error InvalidDistanceCodeLengthsError(); // dynamic block code description: invalid distance code lengths
+    error MissingEndOfBlockError(); // dynamic block code description: missing end-of-block code
+    error InvalidLengthOrDistanceCodeError(); // invalid literal/length or distance code in fixed or dynamic block
+    error DistanceTooFarError(); // distance is too far back in fixed or dynamic block
+    error ConstructError(); // internal: error in construct()
 
     // Input and output state
     struct State {
@@ -45,8 +46,6 @@ contract Inflate2 {
         /////////////////
         // Input state //
         /////////////////
-        // Input buffer
-        bytes input;
         // Bytes read so far
         uint256 incnt;
         ////////////////
@@ -56,12 +55,19 @@ contract Inflate2 {
         uint256 bitbuf;
         // Number of bits in bit buffer
         uint256 bitcnt;
+        // Descriptor code lengths used by _build_dynamic()
+        uint256[] tmpDynamicLengths;
+        // Length and distance codes used by _build_dynamic()
+        Huffman tmpLencode;
+        Huffman tmpDistcode;
         //////////////////////////
         // Static Huffman codes //
         //////////////////////////
-        Huffman lencode;
-        Huffman distcode;
+        Huffman fixedLencode;
+        Huffman fixedDistcode;
+        //////////////////////////
         // Constants (set in puff())
+        //////////////////////////
         // Size base for length codes 257..285
         uint16[29] CODES_LENS;
         // Extra bits for length codes 257..285
@@ -70,18 +76,27 @@ contract Inflate2 {
         uint16[30] CODES_DISTS;
         // Extra bits for distance codes 0..29
         uint8[30] CODES_DEXTS;
+        // Permutation of code length codes
+        uint8[19] BUILD_DYNAMIC_LENGTHS_ORDER;
     }
-
+    
     // Huffman code decoding tables
     struct Huffman {
         uint256[] counts;
         uint256[] symbols;
     }
 
-    function bits(State memory s, uint256 need)
+    function _readInputByte(uint256 i) private pure returns (uint8 b) {
+        assembly {
+            let o := add(0x04, calldataload(0x04))
+            b := shr(248, calldataload(add(o, add(0x20, i))))
+        }
+    }
+    
+    function _bits(State memory s, uint256 need)
         private
         pure
-        returns (ErrorCode, uint256)
+        returns (uint256 ret)
     { unchecked {
         // Bit accumulator (can use up to 20 bits)
         uint256 val;
@@ -89,13 +104,8 @@ contract Inflate2 {
         // Load at least need bits into val
         val = s.bitbuf;
         while (s.bitcnt < need) {
-            if (s.incnt == s.input.length) {
-                // Out of input
-                return (ErrorCode.ERR_NOT_TERMINATED, 0);
-            }
-
             // Load eight bits
-            val |= uint256(uint8(s.input[s.incnt++])) << s.bitcnt;
+            val |= uint256(_readInputByte(s.incnt++)) << s.bitcnt;
             s.bitcnt += 8;
         }
 
@@ -104,11 +114,10 @@ contract Inflate2 {
         s.bitcnt -= need;
 
         // Return need bits, zeroing the bits above that
-        uint256 ret = (val & ((1 << need) - 1));
-        return (ErrorCode.ERR_NONE, ret);
-    }}
+        ret = (val & ((1 << need) - 1));
+    } }
 
-    function _stored(State memory s) private pure returns (ErrorCode) {
+    function _stored(State memory s) private pure { unchecked {
         // Length of stored block
         uint256 len;
 
@@ -117,45 +126,34 @@ contract Inflate2 {
         s.bitcnt = 0;
 
         // Get length and check against its one's complement
-        if (s.incnt + 4 > s.input.length) {
-            // Not enough input
-            return ErrorCode.ERR_NOT_TERMINATED;
-        }
-        len = uint256(uint8(s.input[s.incnt++]));
-        len |= uint256(uint8(s.input[s.incnt++])) << 8;
+        len = uint256(_readInputByte(s.incnt++));
+        len |= uint256(_readInputByte(s.incnt++)) << 8;
 
         if (
-            uint8(s.input[s.incnt++]) != (~len & 0xFF) ||
-            uint8(s.input[s.incnt++]) != ((~len >> 8) & 0xFF)
+            _readInputByte(s.incnt++) != (~len & 0xFF) ||
+            _readInputByte(s.incnt++) != ((~len >> 8) & 0xFF)
         ) {
             // Didn't match complement!
-            return ErrorCode.ERR_STORED_LENGTH_NO_MATCH;
+            revert StoredLengthNoMatchError();
         }
 
         // Copy len bytes from in to out
-        if (s.incnt + len > s.input.length) {
-            // Not enough input
-            return ErrorCode.ERR_NOT_TERMINATED;
-        }
         if (s.outcnt + len > s.output.length) {
             // Not enough output space
-            return ErrorCode.ERR_OUTPUT_EXHAUSTED;
+            revert OutputExhaustedError();
         }
         while (len != 0) {
             // Note: Solidity reverts on underflow, so we decrement here
             len -= 1;
-            s.output[s.outcnt++] = s.input[s.incnt++];
+            s.output[s.outcnt++] = bytes1(_readInputByte(s.incnt++));
         }
-
-        // Done with a valid stored block
-        return ErrorCode.ERR_NONE;
-    }
+    } }
 
     function _decode(State memory s, Huffman memory h)
         private
         pure
-        returns (ErrorCode, uint256)
-    {
+        returns (uint256)
+    { unchecked {
         // Current number of bits in code
         uint256 len;
         // Len bits being decoded
@@ -166,22 +164,17 @@ contract Inflate2 {
         uint256 count;
         // Index of first code of length len in symbol table
         uint256 index = 0;
-        // Error code
-        ErrorCode err;
 
         for (len = 1; len <= MAXBITS; len++) {
             // Get next bit
             uint256 tempCode;
-            (err, tempCode) = bits(s, 1);
-            if (err != ErrorCode.ERR_NONE) {
-                return (err, 0);
-            }
+            tempCode = _bits(s, 1);
             code |= tempCode;
             count = h.counts[len];
 
             // If length len, return symbol
             if (code < first + count) {
-                return (ErrorCode.ERR_NONE, h.symbols[index + (code - first)]);
+                return h.symbols[index + (code - first)];
             }
             // Else update for next length
             index += count;
@@ -191,15 +184,15 @@ contract Inflate2 {
         }
 
         // Ran out of codes
-        return (ErrorCode.ERR_INVALID_LENGTH_OR_DISTANCE_CODE, 0);
-    }
+        revert InvalidLengthOrDistanceCodeError();
+    } }
 
     function _construct(
         Huffman memory h,
         uint256[] memory lengths,
         uint256 n,
         uint256 start
-    ) private pure returns (ErrorCode) { unchecked {
+    ) private pure { unchecked {
         // Current symbol when stepping through lengths[]
         uint256 symbol;
         // Current length when stepping through h.counts[]
@@ -220,30 +213,30 @@ contract Inflate2 {
         // No codes!
         if (h.counts[0] == n) {
             // Complete, but decode() will fail
-            return (ErrorCode.ERR_NONE);
+            return;
         }
 
         // Check for an over-subscribed or incomplete set of lengths
 
         // One possible code of zero length
         left = 1;
-
+        
+        offs[1] = 0;
         for (len = 1; len <= MAXBITS; len++) {
             // One more bit, double codes left
             left <<= 1;
             if (left < h.counts[len]) {
                 // Over-subscribed--return error
-                return ErrorCode.ERR_CONSTRUCT;
+                revert ConstructError();
             }
             // Deduct count from possible codes
 
             left -= h.counts[len];
-        }
-
-        // Generate offsets into symbol table for each length for sorting
-        offs[1] = 0;
-        for (len = 1; len < MAXBITS; len++) {
-            offs[len + 1] = offs[len] + h.counts[len];
+           
+            // Generate offsets into symbol table for each length for sorting
+            if (len < MAXBITS) {
+                offs[len + 1] = offs[len] + h.counts[len];
+            }
         }
 
         // Put symbols in table sorted by length, by symbol order within each length
@@ -254,14 +247,18 @@ contract Inflate2 {
         }
 
         // Left > 0 means incomplete
-        return left > 0 ? ErrorCode.ERR_CONSTRUCT : ErrorCode.ERR_NONE;
-    }}
+        // if (left > 0) {
+        //     if (n != h.counts[0] + h.counts[1]) {
+        //         revert ConstructError();
+        //     }
+        // }
+    } }
 
     function _codes(
         State memory s,
         Huffman memory lencode,
         Huffman memory distcode
-    ) private pure returns (ErrorCode) {
+    ) private pure { unchecked {
         // Decoded symbol
         uint256 symbol;
         // Length for copy
@@ -276,22 +273,16 @@ contract Inflate2 {
         uint16[30] memory dists = s.CODES_DISTS;
         // Extra bits for distance codes 0..29
         uint8[30] memory dext = s.CODES_DEXTS;
-        // Error code
-        ErrorCode err;
 
         // Decode literals and length/distance pairs
         while (symbol != 256) {
-            (err, symbol) = _decode(s, lencode);
-            if (err != ErrorCode.ERR_NONE) {
-                // Invalid symbol
-                return err;
-            }
+            symbol = _decode(s, lencode);
 
             if (symbol < 256) {
                 // Literal: symbol is the byte
                 // Write out the literal
                 if (s.outcnt == s.output.length) {
-                    return ErrorCode.ERR_OUTPUT_EXHAUSTED;
+                    revert OutputExhaustedError();
                 }
                 s.output[s.outcnt] = bytes1(uint8(symbol));
                 s.outcnt++;
@@ -302,51 +293,59 @@ contract Inflate2 {
                 symbol -= 257;
                 if (symbol >= 29) {
                     // Invalid fixed code
-                    return ErrorCode.ERR_INVALID_LENGTH_OR_DISTANCE_CODE;
+                    revert InvalidLengthOrDistanceCodeError();
                 }
 
-                (err, tempBits) = bits(s, lext[symbol]);
-                if (err != ErrorCode.ERR_NONE) {
-                    return err;
-                }
-                len = s.CODES_LENS[symbol] + tempBits;
+                tempBits = _bits(s, lext[symbol]);
+                len = lens[symbol] + tempBits;
 
                 // Get and check distance
-                (err, symbol) = _decode(s, distcode);
-                if (err != ErrorCode.ERR_NONE) {
-                    // Invalid symbol
-                    return err;
-                }
-                (err, tempBits) = bits(s, dext[symbol]);
-                if (err != ErrorCode.ERR_NONE) {
-                    return err;
-                }
+                symbol = _decode(s, distcode);
+                tempBits = _bits(s, dext[symbol]);
                 dist = dists[symbol] + tempBits;
                 if (dist > s.outcnt) {
                     // Distance too far back
-                    return ErrorCode.ERR_DISTANCE_TOO_FAR;
+                    revert DistanceTooFarError();
                 }
 
                 // Copy length bytes from distance bytes back
                 if (s.outcnt + len > s.output.length) {
-                    return ErrorCode.ERR_OUTPUT_EXHAUSTED;
+                    revert OutputExhaustedError();
                 }
-                while (len != 0) {
-                    // Note: Solidity reverts on underflow, so we decrement here
-                    len -= 1;
-                    s.output[s.outcnt] = s.output[s.outcnt - dist];
-                    s.outcnt++;
+                bytes memory output = s.output;
+                uint256 outcnt = s.outcnt;
+                s.outcnt += len;
+                assembly("memory-safe") {
+                    let dst := add(output, add(0x20, outcnt))
+                    switch gt(len, dist)
+                        case 1 {
+                            for {} iszero(iszero(len)) {} {
+                                mstore(dst, mload(sub(dst, dist)))
+                                len := sub(len, 0x01)
+                                dst := add(dst, 0x01)
+                            }
+                        }
+                        default {
+                            for {} iszero(iszero(len)) {} {
+                                mstore(dst, mload(sub(dst, dist)))
+                                switch gt(len, 0x20)
+                                    case 1 {
+                                        len := sub(len, 0x20)
+                                        dst := add(dst, 0x20)
+                                    }
+                                    default {
+                                        len := 0
+                                    }
+                            }
+                        }
                 }
             } else {
                 s.outcnt += len;
             }
         }
+    } }
 
-        // Done with a valid fixed or dynamic block
-        return ErrorCode.ERR_NONE;
-    }
-
-    function _build_fixed(State memory s) private pure returns (ErrorCode) {
+    function _build_fixed(State memory s) private pure { unchecked {
         // Build fixed Huffman tables
         // TODO this is all a compile-time constant
         uint256 symbol;
@@ -366,134 +365,87 @@ contract Inflate2 {
             lengths[symbol] = 8;
         }
 
-        _construct(s.lencode, lengths, FIXLCODES, 0);
+        _construct(s.fixedLencode, lengths, FIXLCODES, 0);
 
         // Distance table
         for (symbol = 0; symbol < MAXDCODES; symbol++) {
             lengths[symbol] = 5;
         }
 
-        _construct(s.distcode, lengths, MAXDCODES, 0);
+        _construct(s.fixedDistcode, lengths, MAXDCODES, 0);
+    } }
 
-        return ErrorCode.ERR_NONE;
-    }
-
-    function _fixed(State memory s) private pure returns (ErrorCode) {
+    function _fixed(State memory s) private pure {
         // Decode data until end-of-block code
-        return _codes(s, s.lencode, s.distcode);
+        _codes(s, s.fixedLencode, s.fixedDistcode);
     }
 
     function _build_dynamic_lengths(State memory s)
         private
         pure
-        returns (ErrorCode, uint256[] memory)
-    {
+        returns (uint256[] memory)
+    { unchecked {
         uint256 ncode;
         // Index of lengths[]
         uint256 index;
-        // Descriptor code lengths
-        uint256[] memory lengths = new uint256[](MAXCODES);
-        // Error code
-        ErrorCode err;
-        // Permutation of code length codes
-        uint8[19] memory order =
-            [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15];
 
-        (err, ncode) = bits(s, 4);
-        if (err != ErrorCode.ERR_NONE) {
-            return (err, lengths);
-        }
+        ncode = _bits(s, 4);
         ncode += 4;
 
         // Read code length code lengths (really), missing lengths are zero
         for (index = 0; index < ncode; index++) {
-            (err, lengths[order[index]]) = bits(s, 3);
-            if (err != ErrorCode.ERR_NONE) {
-                return (err, lengths);
-            }
+            s.tmpDynamicLengths[s.BUILD_DYNAMIC_LENGTHS_ORDER[index]] = _bits(s, 3);
         }
         for (; index < 19; index++) {
-            lengths[order[index]] = 0;
+            s.tmpDynamicLengths[s.BUILD_DYNAMIC_LENGTHS_ORDER[index]] = 0;
         }
 
-        return (ErrorCode.ERR_NONE, lengths);
-    }
+        return s.tmpDynamicLengths;
+    } }
 
     function _build_dynamic(State memory s)
         private
         pure
         returns (
-            ErrorCode,
             Huffman memory,
             Huffman memory
         )
-    {
+    { unchecked {
         // Number of lengths in descriptor
         uint256 nlen;
         uint256 ndist;
-        // Index of lengths[]
-        uint256 index;
-        // Error code
-        ErrorCode err;
-        // Descriptor code lengths
-        uint256[] memory lengths = new uint256[](MAXCODES);
         // Length and distance codes
-        Huffman memory lencode =
-            Huffman(new uint256[](MAXBITS + 1), new uint256[](MAXLCODES));
-        Huffman memory distcode =
-            Huffman(new uint256[](MAXBITS + 1), new uint256[](MAXDCODES));
+        Huffman memory lencode = s.tmpLencode;
+        Huffman memory distcode = s.tmpDistcode;
         uint256 tempBits;
-
+        
         // Get number of lengths in each table, check lengths
-        (err, nlen) = bits(s, 5);
-        if (err != ErrorCode.ERR_NONE) {
-            return (err, lencode, distcode);
-        }
+        nlen = _bits(s, 5);
         nlen += 257;
-        (err, ndist) = bits(s, 5);
-        if (err != ErrorCode.ERR_NONE) {
-            return (err, lencode, distcode);
-        }
+        ndist = _bits(s, 5);
         ndist += 1;
-
+        
         if (nlen > MAXLCODES || ndist > MAXDCODES) {
             // Bad counts
-            return (
-                ErrorCode.ERR_TOO_MANY_LENGTH_OR_DISTANCE_CODES,
-                lencode,
-                distcode
-            );
+            revert TooManyLengthOrDistanceCodesError();
         }
-
-        (err, lengths) = _build_dynamic_lengths(s);
-        if (err != ErrorCode.ERR_NONE) {
-            return (err, lencode, distcode);
-        }
+        
+        // Descriptor code lengths
+        uint256[] memory lengths = _build_dynamic_lengths(s);
 
         // Build huffman table for code lengths codes (use lencode temporarily)
-        err = _construct(lencode, lengths, 19, 0);
-        if (err != ErrorCode.ERR_NONE) {
-            // Require complete code set here
-            return (
-                ErrorCode.ERR_CODE_LENGTHS_CODES_INCOMPLETE,
-                lencode,
-                distcode
-            );
-        }
+        _construct(lencode, lengths, 19, 0);
 
+        // Index of lengths[]
+        uint256 index = 0;
         // Read length/literal and distance code length tables
-        index = 0;
         while (index < nlen + ndist) {
             // Decoded value
             uint256 symbol;
             // Last length to repeat
             uint256 len;
 
-            (err, symbol) = _decode(s, lencode);
-            if (err != ErrorCode.ERR_NONE) {
-                // Invalid symbol
-                return (err, lencode, distcode);
-            }
+            symbol = _decode(s, lencode);
 
             if (symbol < 16) {
                 // Length in 0..15
@@ -506,191 +458,162 @@ contract Inflate2 {
                     // Repeat last length 3..6 times
                     if (index == 0) {
                         // No last length!
-                        return (
-                            ErrorCode.ERR_REPEAT_NO_FIRST_LENGTH,
-                            lencode,
-                            distcode
-                        );
+                        revert RepeatNoFirstLengthError();
                     }
                     // Last length
                     len = lengths[index - 1];
-                    (err, tempBits) = bits(s, 2);
-                    if (err != ErrorCode.ERR_NONE) {
-                        return (err, lencode, distcode);
-                    }
+                    tempBits = _bits(s, 2);
                     symbol = 3 + tempBits;
                 } else if (symbol == 17) {
                     // Repeat zero 3..10 times
-                    (err, tempBits) = bits(s, 3);
-                    if (err != ErrorCode.ERR_NONE) {
-                        return (err, lencode, distcode);
-                    }
+                    tempBits = _bits(s, 3);
                     symbol = 3 + tempBits;
                 } else {
                     // == 18, repeat zero 11..138 times
-                    (err, tempBits) = bits(s, 7);
-                    if (err != ErrorCode.ERR_NONE) {
-                        return (err, lencode, distcode);
-                    }
+                    tempBits = _bits(s, 7);
                     symbol = 11 + tempBits;
                 }
 
                 if (index + symbol > nlen + ndist) {
                     // Too many lengths!
-                    return (ErrorCode.ERR_REPEAT_MORE, lencode, distcode);
+                    revert RepeatMoreError();
                 }
-                while (symbol != 0) {
-                    // Note: Solidity reverts on underflow, so we decrement here
-                    symbol -= 1;
-
-                    // Repeat last or zero symbol times
-                    lengths[index++] = len;
+                assembly("memory-safe") {
+                    let p := add(lengths, add(0x20, mul(index, 0x20)))
+                    index := add(index, symbol)
+                    for {} iszero(iszero(symbol)) {} {
+                        mstore(p, len)
+                        symbol := sub(symbol, 1)
+                        p := add(p, 0x20)
+                    }
                 }
             }
         }
 
         // Check for end-of-block code -- there better be one!
         if (lengths[256] == 0) {
-            return (ErrorCode.ERR_MISSING_END_OF_BLOCK, lencode, distcode);
+            revert MissingEndOfBlockError();
         }
 
         // Build huffman table for literal/length codes
-        err = _construct(lencode, lengths, nlen, 0);
-        if (
-            err != ErrorCode.ERR_NONE &&
-            (err == ErrorCode.ERR_NOT_TERMINATED ||
-                err == ErrorCode.ERR_OUTPUT_EXHAUSTED ||
-                nlen != lencode.counts[0] + lencode.counts[1])
-        ) {
-            // Incomplete code ok only for single length 1 code
-            return (
-                ErrorCode.ERR_INVALID_LITERAL_LENGTH_CODE_LENGTHS,
-                lencode,
-                distcode
-            );
-        }
+        _construct(lencode, lengths, nlen, 0);
+        // if (
+        //     err != ErrorCode.ERR_NONE &&
+        //     (err == ErrorCode.ERR_NOT_TERMINATED ||
+        //         err == ErrorCode.ERR_OUTPUT_EXHAUSTED ||
+        //         nlen != lencode.counts[0] + lencode.counts[1])
+        // ) {
+        //     // Incomplete code ok only for single length 1 code
+        //     return (
+        //         ErrorCode.ERR_INVALID_LITERAL_LENGTH_CODE_LENGTHS,
+        //         lencode,
+        //         distcode
+        //     );
+        // }
 
         // Build huffman table for distance codes
-        err = _construct(distcode, lengths, ndist, nlen);
-        if (
-            err != ErrorCode.ERR_NONE &&
-            (err == ErrorCode.ERR_NOT_TERMINATED ||
-                err == ErrorCode.ERR_OUTPUT_EXHAUSTED ||
-                ndist != distcode.counts[0] + distcode.counts[1])
-        ) {
-            // Incomplete code ok only for single length 1 code
-            return (
-                ErrorCode.ERR_INVALID_DISTANCE_CODE_LENGTHS,
-                lencode,
-                distcode
-            );
-        }
+        _construct(distcode, lengths, ndist, nlen);
+        // if (
+        //     err != ErrorCode.ERR_NONE &&
+        //     (err == ErrorCode.ERR_NOT_TERMINATED ||
+        //         err == ErrorCode.ERR_OUTPUT_EXHAUSTED ||
+        //         ndist != distcode.counts[0] + distcode.counts[1])
+        // ) {
+        //     // Incomplete code ok only for single length 1 code
+        //     return (
+        //         ErrorCode.ERR_INVALID_DISTANCE_CODE_LENGTHS,
+        //         lencode,
+        //         distcode
+        //     );
+        // }
 
-        return (ErrorCode.ERR_NONE, lencode, distcode);
-    }
+        return (lencode, distcode);
+    } }
 
-    function _dynamic(State memory s) private pure returns (ErrorCode) {
+    function _dynamic(State memory s) private pure {
         // Length and distance codes
         Huffman memory lencode;
         Huffman memory distcode;
-        // Error code
-        ErrorCode err;
 
-        (err, lencode, distcode) = _build_dynamic(s);
-        if (err != ErrorCode.ERR_NONE) {
-            return err;
-        }
+        (lencode, distcode) = _build_dynamic(s);
 
         // Decode data until end-of-block code
-        return _codes(s, lencode, distcode);
+        _codes(s, lencode, distcode);
     }
 
-    function puff(bytes calldata source, uint256 destlen)
+    function inflate(bytes calldata /* input */, uint256 outputSize)
         external 
         pure
-        returns (ErrorCode, bytes memory)
+        returns (bytes memory)
     {
         // Input/output state
         State memory s =
-            State(
-                new bytes(destlen),
-                0,
-                source,
-                0,
-                0,
-                0,
-                Huffman(new uint256[](MAXBITS + 1), new uint256[](FIXLCODES)),
-                Huffman(new uint256[](MAXBITS + 1), new uint256[](MAXDCODES)),
-                [ 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51,
+            State({
+                output: new bytes(outputSize),
+                outcnt: 0,
+                incnt: 0,
+                bitbuf: 0,
+                bitcnt: 0,
+                tmpDynamicLengths: new uint256[](MAXCODES),
+                tmpLencode: Huffman(new uint256[](MAXBITS + 1), new uint256[](MAXCODES)),
+                tmpDistcode: Huffman(new uint256[](MAXBITS + 1), new uint256[](MAXCODES)),
+                fixedLencode: Huffman(new uint256[](MAXBITS + 1), new uint256[](FIXLCODES)),
+                fixedDistcode: Huffman(new uint256[](MAXBITS + 1), new uint256[](MAXDCODES)),
+                CODES_LENS: [ 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51,
                     59, 67, 83, 99, 115, 131, 163, 195, 227, 258 ],
-                [ 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4,
+                CODES_LEXT: [ 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4,
                     4, 5, 5, 5, 5, 0 ],
-                [ 1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385,
+                CODES_DISTS: [ 1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385,
                     513, 769, 1025, 1537, 2049, 3073, 4097, 6145, 8193, 12289, 16385,
                     24577 ],
-                [ 0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10,
-                    10, 11, 11, 12, 12, 13, 13 ]
-            );
+                CODES_DEXTS: [ 0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10,
+                    10, 11, 11, 12, 12, 13, 13 ],
+                BUILD_DYNAMIC_LENGTHS_ORDER: [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15]
+            });
         // Temp: last bit
         uint256 last;
         // Temp: block type bit
         uint256 t;
-        // Error code
-        ErrorCode err;
 
         // Build fixed Huffman tables
-        err = _build_fixed(s);
-        if (err != ErrorCode.ERR_NONE) {
-            return (err, s.output);
-        }
+        _build_fixed(s);
 
         // Process blocks until last block or error
         while (last == 0) {
             // One if last block
-            (err, last) = bits(s, 1);
-            if (err != ErrorCode.ERR_NONE) {
-                return (err, s.output);
-            }
+            last = _bits(s, 1);
 
             // Block type 0..3
-            (err, t) = bits(s, 2);
-            if (err != ErrorCode.ERR_NONE) {
-                return (err, s.output);
-            }
+            t = _bits(s, 2);
 
-            err = (
-                t == 0
-                    ? _stored(s)
-                    : (
-                        t == 1
-                            ? _fixed(s)
-                            : (
-                                t == 2
-                                    ? _dynamic(s)
-                                    : ErrorCode.ERR_INVALID_BLOCK_TYPE
-                            )
-                    )
-            );
-            // type == 3, invalid
-
-            if (err != ErrorCode.ERR_NONE) {
-                // Return with error
-                break;
+            if (t == 0) {
+                _stored(s);
+            } else if (t == 1) {
+                _fixed(s);
+            } else if (t == 2) {
+                _dynamic(s);
+            } else {
+                revert InvalidBlockTypeError();
             }
         }
 
-        return (err, s.output);
+        return s.output;
     }
 
-    function puffAt(address at, uint256 dataOffset, uint256 dataLen, uint256 destlen)
-        public
+    function inflateFrom(
+        address dataAddr,
+        uint256 dataOffset,
+        uint256 dataSize,
+        uint256 outputSize
+    )
+        external
         view
-        returns (ErrorCode, bytes memory)
+        returns (bytes memory)
     {
-        bytes memory data = new bytes(dataLen);
-        assembly {
-            extcodecopy(at, add(data, 0x20), dataOffset, dataLen)
+        bytes memory data = new bytes(dataSize);
+        assembly("memory-safe") {
+            extcodecopy(dataAddr, add(data, 0x20), dataOffset, dataSize)
         }
-        return this.puff(data, destlen);
+        return this.inflate(data, outputSize);
     }
 }
