@@ -12,7 +12,7 @@ contract ZCall is Inflate2 {
     error __Fail();
     error __Success();
     
-    uint256 constant FALLBACK_SIZE = 0x53;
+    uint256 constant FALLBACK_SIZE = 0x60;
 
     function deploySelfExtractingContract(
         bytes calldata zippedInitCode,
@@ -58,6 +58,12 @@ contract ZCall is Inflate2 {
         /**********************************************************************
         Runtime for a self-extracting contract will be:
             FALLBACK():
+                CALLVALUE
+                ISZERO
+                PUSH1 0x06
+                JUMPI
+                INVALID
+                JUMPDEST // :0x06
                 // Build up calldata to zcall() ///////////////////////////////////
                 // selector
                 PUSH4 0xb26e8f4a
@@ -114,17 +120,17 @@ contract ZCall is Inflate2 {
                 // Return or revert
                 SWAP2
                 ISZERO
-                PUSH2 0x51
+                PUSH2 0x58
                 JUMPI
                 RETURN
-                JUMPDEST // :0x51
+                JUMPDEST // :0x58
                 REVERT
             DATA:
                 ...zippedInitCode
         **********************************************************************/
         runtime = abi.encodePacked(
             //// FALLBACK()
-            hex"63b26e8f4a345234595261",
+            hex"3415600657fe5b63b26e8f4a345234595261",
             uint16(FALLBACK_SIZE),
             hex"595261",
             uint16(zippedInitCode.length),
@@ -132,7 +138,7 @@ contract ZCall is Inflate2 {
             uint24(unzippedInitCodeSize),
             hex"595260a05952365952363459393434601c5981033473",
             address(this),
-            hex"5af1343d3d34343e911561005157f35bfd",
+            hex"5af1343d3d34343e911561005857f35bfd",
             //// DATA
             zippedInitCode
         );
