@@ -2,7 +2,7 @@
 pragma solidity ^0.8.19;
 
 /// @notice Solidity implementation of zlib deflate.
-/// @dev Optimized + optimistic form of:
+/// @dev Optimistic form of:
 ///      https://github.com/adlerjohn/inflate-sol/blob/2a88141f5226da9d0252be4a456a2e0b23ba3d0e/contracts/InflateLib.sol
 /// @author @adlerjohn (https://github.com/adlerjohn)
 /// @author @merklejerk (https://github.com/merklejerk)
@@ -19,20 +19,8 @@ contract Inflate2 {
     uint256 constant FIXLCODES = 288;
 
     // Error codes
-    error OutOfInputError(); // available inflate data did not terminate
-    error OutputExhaustedError(); // output space exhausted before completing inflate
     error InvalidBlockTypeError(); // invalid block type (type == 3)
-    error StoredLengthNoMatchError(); // stored block length did not match one's complement
-    error TooManyLengthOrDistanceCodesError(); // dynamic block code description: too many length or distance codes
-    error CodeLengthsCodesIncompleteError(); // dynamic block code description: code lengths codes incomplete
-    error RepeatNoFirstLengthError(); // dynamic block code description: repeat lengths with no first length
-    error RepeatMoreError(); // dynamic block code description: repeat more than specified lengths
-    error InvalidLiteralLengthCodeLengthsError(); // dynamic block code description: invalid literal/length code lengths
-    error InvalidDistanceCodeLengthsError(); // dynamic block code description: invalid distance code lengths
-    error MissingEndOfBlockError(); // dynamic block code description: missing end-of-block code
     error InvalidLengthOrDistanceCodeError(); // invalid literal/length or distance code in fixed or dynamic block
-    error DistanceTooFarError(); // distance is too far back in fixed or dynamic block
-    error ConstructError(); // internal: error in construct()
 
     // Input and output state
     struct State {
@@ -128,22 +116,8 @@ contract Inflate2 {
         // Get length and check against its one's complement
         len = uint256(_readInputByte(s.incnt++));
         len |= uint256(_readInputByte(s.incnt++)) << 8;
-
-        if (
-            _readInputByte(s.incnt++) != (~len & 0xFF) ||
-            _readInputByte(s.incnt++) != ((~len >> 8) & 0xFF)
-        ) {
-            // Didn't match complement!
-            revert StoredLengthNoMatchError();
-        }
-
-        // Copy len bytes from in to out
-        if (s.outcnt + len > s.output.length) {
-            // Not enough output space
-            revert OutputExhaustedError();
-        }
+        s.incnt += 2;
         while (len != 0) {
-            // Note: Solidity reverts on underflow, so we decrement here
             len -= 1;
             s.output[s.outcnt++] = bytes1(_readInputByte(s.incnt++));
         }
@@ -225,10 +199,6 @@ contract Inflate2 {
         for (len = 1; len <= MAXBITS; len++) {
             // One more bit, double codes left
             left <<= 1;
-            if (left < h.counts[len]) {
-                // Over-subscribed--return error
-                revert ConstructError();
-            }
             // Deduct count from possible codes
 
             left -= h.counts[len];
@@ -245,13 +215,6 @@ contract Inflate2 {
                 h.symbols[offs[lengths[start + symbol]]++] = symbol;
             }
         }
-
-        // Left > 0 means incomplete
-        // if (left > 0) {
-        //     if (n != h.counts[0] + h.counts[1]) {
-        //         revert ConstructError();
-        //     }
-        // }
     } }
 
     function _codes(
@@ -281,9 +244,6 @@ contract Inflate2 {
             if (symbol < 256) {
                 // Literal: symbol is the byte
                 // Write out the literal
-                if (s.outcnt == s.output.length) {
-                    revert OutputExhaustedError();
-                }
                 s.output[s.outcnt] = bytes1(uint8(symbol));
                 s.outcnt++;
             } else if (symbol > 256) {
@@ -291,10 +251,6 @@ contract Inflate2 {
                 // Length
                 // Get and compute length
                 symbol -= 257;
-                if (symbol >= 29) {
-                    // Invalid fixed code
-                    revert InvalidLengthOrDistanceCodeError();
-                }
 
                 tempBits = _bits(s, lext[symbol]);
                 len = lens[symbol] + tempBits;
@@ -303,15 +259,8 @@ contract Inflate2 {
                 symbol = _decode(s, distcode);
                 tempBits = _bits(s, dext[symbol]);
                 dist = dists[symbol] + tempBits;
-                if (dist > s.outcnt) {
-                    // Distance too far back
-                    revert DistanceTooFarError();
-                }
 
                 // Copy length bytes from distance bytes back
-                if (s.outcnt + len > s.output.length) {
-                    revert OutputExhaustedError();
-                }
                 bytes memory output = s.output;
                 uint256 outcnt = s.outcnt;
                 s.outcnt += len;
@@ -425,11 +374,6 @@ contract Inflate2 {
         ndist = _bits(s, 5);
         ndist += 1;
         
-        if (nlen > MAXLCODES || ndist > MAXDCODES) {
-            // Bad counts
-            revert TooManyLengthOrDistanceCodesError();
-        }
-        
         // Descriptor code lengths
         uint256[] memory lengths = _build_dynamic_lengths(s);
 
@@ -456,10 +400,6 @@ contract Inflate2 {
                 len = 0;
                 if (symbol == 16) {
                     // Repeat last length 3..6 times
-                    if (index == 0) {
-                        // No last length!
-                        revert RepeatNoFirstLengthError();
-                    }
                     // Last length
                     len = lengths[index - 1];
                     tempBits = _bits(s, 2);
@@ -474,10 +414,6 @@ contract Inflate2 {
                     symbol = 11 + tempBits;
                 }
 
-                if (index + symbol > nlen + ndist) {
-                    // Too many lengths!
-                    revert RepeatMoreError();
-                }
                 assembly("memory-safe") {
                     let p := add(lengths, add(0x20, mul(index, 0x20)))
                     index := add(index, symbol)
@@ -490,42 +426,11 @@ contract Inflate2 {
             }
         }
 
-        // Check for end-of-block code -- there better be one!
-        if (lengths[256] == 0) {
-            revert MissingEndOfBlockError();
-        }
-
         // Build huffman table for literal/length codes
         _construct(lencode, lengths, nlen, 0);
-        // if (
-        //     err != ErrorCode.ERR_NONE &&
-        //     (err == ErrorCode.ERR_NOT_TERMINATED ||
-        //         err == ErrorCode.ERR_OUTPUT_EXHAUSTED ||
-        //         nlen != lencode.counts[0] + lencode.counts[1])
-        // ) {
-        //     // Incomplete code ok only for single length 1 code
-        //     return (
-        //         ErrorCode.ERR_INVALID_LITERAL_LENGTH_CODE_LENGTHS,
-        //         lencode,
-        //         distcode
-        //     );
-        // }
 
         // Build huffman table for distance codes
         _construct(distcode, lengths, ndist, nlen);
-        // if (
-        //     err != ErrorCode.ERR_NONE &&
-        //     (err == ErrorCode.ERR_NOT_TERMINATED ||
-        //         err == ErrorCode.ERR_OUTPUT_EXHAUSTED ||
-        //         ndist != distcode.counts[0] + distcode.counts[1])
-        // ) {
-        //     // Incomplete code ok only for single length 1 code
-        //     return (
-        //         ErrorCode.ERR_INVALID_DISTANCE_CODE_LENGTHS,
-        //         lencode,
-        //         distcode
-        //     );
-        // }
 
         return (lencode, distcode);
     } }

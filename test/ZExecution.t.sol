@@ -3,30 +3,34 @@ pragma solidity ^0.8.19;
 
 import "forge-std/Test.sol";
 import "forge-std/console.sol";
-import "../src/ZCallExecution.sol";
+import "../src/ZExecution.sol";
 import "./LibContractStorage.sol";
 import "./ZipUtil.sol";
 
-contract ZCallExecutionTest is ZCallExecution, ZipUtil, Test {
+contract ZExecutionTest is ZExecution, ZipUtil, Test {
     using LibContractStorage for bytes;
     using LibContractStorage for address;
 
     address zcallZipped;
     uint256 zcallUnzippedSize;
+    bytes32 zcallUnzippedHash;
     address zrunZipped;
     uint256 zrunUnzippedSize;
+    bytes32 zrunUnzippedHash;
 
     constructor() {
         {
             bytes memory creationCode = type(ZCallTestContract).creationCode;
             bytes memory zippedInitCode = _zip(creationCode);
             zcallUnzippedSize = creationCode.length;
+            zcallUnzippedHash = keccak256(creationCode);
             zcallZipped = zippedInitCode.store();
         }
         {
             bytes memory creationCode = type(ZRunTestContract).creationCode;
             bytes memory zippedInitCode = _zip(creationCode);
             zrunUnzippedSize = creationCode.length;
+            zrunUnzippedHash = keccak256(creationCode);
             zrunZipped = zippedInitCode.store();
         }
     }
@@ -38,6 +42,7 @@ contract ZCallExecutionTest is ZCallExecution, ZipUtil, Test {
             1,
             zcallZipped.code.length-1,
             zcallUnzippedSize,
+            zcallUnzippedHash,
             abi.encodeCall(ZCallTestContract.hash, (hashPayload))
         ), (bytes32));
         assertEq(h, keccak256(hashPayload));
@@ -50,7 +55,20 @@ contract ZCallExecutionTest is ZCallExecution, ZipUtil, Test {
             1,
             zcallZipped.code.length-1,
             zcallUnzippedSize,
+            zcallUnzippedHash,
             abi.encodeCall(ZCallTestContract.conditionalFailure, (1337))
+        );
+    }
+
+    function test_zcall_badHash() external {
+        vm.expectRevert(UnzippedHashMismatchError.selector);
+        this.zcall(
+            zcallZipped,
+            1,
+            zcallZipped.code.length-1,
+            zcallUnzippedSize,
+            ~zcallUnzippedHash,
+            abi.encodeCall(ZCallTestContract.conditionalFailure, (1234))
         );
     }
 
@@ -61,6 +79,7 @@ contract ZCallExecutionTest is ZCallExecution, ZipUtil, Test {
             1,
             zrunZipped.code.length-1,
             zrunUnzippedSize,
+            zrunUnzippedHash,
             abi.encodeWithSelector(bytes4(0), 1234, payload)
         );
         assertEq(r, abi.encode(payload));
@@ -74,7 +93,21 @@ contract ZCallExecutionTest is ZCallExecution, ZipUtil, Test {
             1,
             zrunZipped.code.length-1,
             zrunUnzippedSize,
+            zrunUnzippedHash,
             abi.encodeWithSelector(bytes4(0), 1337, payload)
+        );
+    }
+
+    function test_zrun_badHash() external {
+        bytes memory payload = bytes("hello, world!");
+        vm.expectRevert(UnzippedHashMismatchError.selector);
+        this.zrun(
+            zrunZipped,
+            1,
+            zrunZipped.code.length-1,
+            zrunUnzippedSize,
+            ~zrunUnzippedHash,
+            abi.encodeWithSelector(bytes4(0), 1234, payload)
         );
     }
 }
