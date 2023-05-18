@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.19;
 
-import "./RuntimeDeployer.sol";
 import "./ZExecution.sol";
 
 /// @dev Self-extracting functions for zipped contracts.
@@ -10,55 +9,9 @@ contract ZRuntime {
     error SafeCastError();
 
     uint256 constant FALLBACK_SIZE = 0x3E;
-    uint256 constant METADATA_SIZE = 35;
+    uint256 constant METADATA_SIZE = 11;
     uint256 constant ZIPPED_DATA_OFFSET = FALLBACK_SIZE + METADATA_SIZE;
 
-    /// @notice Create deployable initcode for a self-extracting zcall contract.
-    /// @param zippedInitCode The zipped init code of the original contract.
-    /// @param unzippedInitCodeSize The size of the unzipped init code of the original contract.
-    /// @param unzippedInitCodeHash The hash of the unzipped init code of the original contract.
-    function createSelfExtractingZCallInitCode(
-        bytes calldata zippedInitCode,
-        uint256 unzippedInitCodeSize,
-        bytes32 unzippedInitCodeHash
-    )
-        public
-        view
-        returns (bytes memory initCode)
-    {
-        initCode = abi.encodePacked(
-            type(RuntimeDeployer).creationCode,
-            abi.encode(createSelfExtractingZCallRuntime(
-                zippedInitCode,
-                unzippedInitCodeSize,
-                unzippedInitCodeHash
-            ))
-        );
-    }
-
-    /// @notice Create deployable initcode for a self-extracting zrun contract.
-    /// @param zippedInitCode The zipped init code of the original contract.
-    /// @param unzippedInitCodeSize The size of the unzipped init code of the original contract.
-    /// @param unzippedInitCodeHash The hash of the unzipped init code of the original contract.
-    function createSelfExtractingZRunInitCode(
-        bytes calldata zippedInitCode,
-        uint256 unzippedInitCodeSize,
-        bytes32 unzippedInitCodeHash
-    )
-        public
-        view
-        returns (bytes memory initCode)
-    {
-        initCode = abi.encodePacked(
-            type(RuntimeDeployer).creationCode,
-            abi.encode(createSelfExtractingZRunRuntime(
-                zippedInitCode,
-                unzippedInitCodeSize,
-                unzippedInitCodeHash
-            ))
-        );
-    }
-    
     /// @notice Create runtime for a self-extracting zcall contract.
     /// @param zippedInitCode The zipped init code of the original contract.
     /// @param unzippedInitCodeSize The size of the unzipped init code of the original contract.
@@ -66,7 +19,7 @@ contract ZRuntime {
     function createSelfExtractingZCallRuntime(
         bytes calldata zippedInitCode,
         uint256 unzippedInitCodeSize,
-        bytes32 unzippedInitCodeHash
+        bytes8 unzippedInitCodeHash
     )
         public
         view
@@ -87,7 +40,7 @@ contract ZRuntime {
     function createSelfExtractingZRunRuntime(
         bytes calldata zippedInitCode,
         uint256 unzippedInitCodeSize,
-        bytes32 unzippedInitCodeHash
+        bytes8 unzippedInitCodeHash
     )
         public
         view
@@ -124,14 +77,14 @@ contract ZRuntime {
     function _handleSelfExtractingFallback(bytes4 execSelector) private {
         uint256 zippedDataSize = msg.sender.code.length - ZIPPED_DATA_OFFSET;
         uint24 unzippedSize;
-        bytes32 unzippedHash;
+        bytes8 unzippedHash;
         // Read metadata from runtime code.
         assembly("memory-safe") {
             let p := mload(0x40)
             // Metadata comes right after the fallback.
             extcodecopy(caller(), p, FALLBACK_SIZE, METADATA_SIZE)
-            unzippedSize := shr(232, mload(p))
-            unzippedHash := mload(add(p, 3))
+            unzippedSize := shr(232, mload(p)) // 3 bytes
+            unzippedHash := shl(192, shr(192, mload(add(p, 3)))) // 8 bytes
         }
         // Call the zip execute function.
         (bool b, bytes memory r) = address(this).call(abi.encodeWithSelector(execSelector,
@@ -155,7 +108,7 @@ contract ZRuntime {
         bytes4 fallbackSelector,
         bytes calldata zippedInitCode,
         uint256 unzippedInitCodeSize,
-        bytes32 unzippedInitCodeHash
+        bytes8 unzippedInitCodeHash
     )
         private
         view
@@ -205,7 +158,7 @@ contract ZRuntime {
                     REVERT
                 METADATA:
                     uint24(unzippedInitCodeSize)
-                    bytes32(unzippedInitCodeHash)
+                    bytes8(unzippedInitCodeHash)
                 DATA:
                     bytes(zippedInitCode)
         **********************************************************************/
@@ -218,7 +171,7 @@ contract ZRuntime {
             hex"5af1343d3d34343e911561003c57f35bfd",
             //// METADATA
             _safeCastToUint24(unzippedInitCodeSize),
-            bytes32(unzippedInitCodeHash),
+            bytes8(unzippedInitCodeHash),
             //// ZIPPED DATA
             zippedInitCode
         );

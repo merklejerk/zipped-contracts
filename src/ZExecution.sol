@@ -27,7 +27,7 @@ contract ZExecution is Inflate2 {
         uint256 dataOffset,
         uint256 dataSize,
         uint256 unzippedSize,
-        bytes32 unzippedHash,
+        bytes8 unzippedHash,
         bytes calldata callData
     )
         external
@@ -62,7 +62,7 @@ contract ZExecution is Inflate2 {
         uint256 dataOffset,
         uint256 dataSize,
         uint256 unzippedSize,
-        bytes32 unzippedHash,
+        bytes8 unzippedHash,
         bytes calldata callData
     )
         external
@@ -71,8 +71,8 @@ contract ZExecution is Inflate2 {
         zipped = zipped == address(0) ? msg.sender : zipped;
         //  Unzip to initcode.
         bytes memory initCode = this.inflateFrom(zipped, dataOffset, dataSize, unzippedSize);
-        if (unzippedHash != bytes32(0)) {
-            if (keccak256(initCode) != unzippedHash) {
+        if (unzippedHash != bytes8(0)) {
+            if (bytes8(keccak256(initCode)) != unzippedHash) {
                 revert UnzippedHashMismatchError();
             }
         }
@@ -141,7 +141,7 @@ contract ZExecution is Inflate2 {
         uint256 dataOffset,
         uint256 dataSize,
         uint256 unzippedSize,
-        bytes32 unzippedHash,
+        bytes8 unzippedHash,
         bytes calldata initArgs
     )
         external
@@ -178,7 +178,7 @@ contract ZExecution is Inflate2 {
         uint256 dataOffset,
         uint256 dataSize,
         uint256 unzippedSize,
-        bytes32 unzippedHash,
+        bytes8 unzippedHash,
         bytes calldata initArgs
     )
         external
@@ -187,8 +187,8 @@ contract ZExecution is Inflate2 {
         zipped = zipped == address(0) ? msg.sender : zipped;
         //  Unzip to initcode.
         bytes memory initCode = this.inflateFrom(zipped, dataOffset, dataSize, unzippedSize);
-        if (unzippedHash != bytes32(0)) {
-            if (keccak256(initCode) != unzippedHash) {
+        if (unzippedHash != bytes8(0)) {
+            if (bytes8(keccak256(initCode)) != unzippedHash) {
                 revert UnzippedHashMismatchError();
             }
         }

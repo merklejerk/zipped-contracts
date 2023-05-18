@@ -13,24 +13,24 @@ contract ZExecutionTest is ZExecution, ZipUtil, Test {
 
     address zcallZipped;
     uint256 zcallUnzippedSize;
-    bytes32 zcallUnzippedHash;
+    bytes8 zcallUnzippedHash;
     address zrunZipped;
     uint256 zrunUnzippedSize;
-    bytes32 zrunUnzippedHash;
+    bytes8 zrunUnzippedHash;
 
     constructor() {
         {
             bytes memory creationCode = type(ZCallTestContract).creationCode;
             bytes memory zippedInitCode = _zip(creationCode);
             zcallUnzippedSize = creationCode.length;
-            zcallUnzippedHash = keccak256(creationCode);
+            zcallUnzippedHash = bytes8(keccak256(creationCode));
             zcallZipped = zippedInitCode.store();
         }
         {
             bytes memory creationCode = type(ZRunTestContract).creationCode;
             bytes memory zippedInitCode = _zip(creationCode);
             zrunUnzippedSize = creationCode.length;
-            zrunUnzippedHash = keccak256(creationCode);
+            zrunUnzippedHash = bytes8(keccak256(creationCode));
             zrunZipped = zippedInitCode.store();
         }
     }

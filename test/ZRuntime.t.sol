@@ -5,32 +5,34 @@ import "forge-std/Test.sol";
 import "forge-std/console.sol";
 import "../src/ZExecution.sol";
 import "../src/ZRuntime.sol";
+import "../src/LibSelfExtractingInitCode.sol";
 import "./LibContractStorage.sol";
 import "./ZipUtil.sol";
 
 contract ZRuntimeTest is ZRuntime, ZExecution, ZipUtil, Test {
     using LibContractStorage for bytes;
     using LibContractStorage for address;
+    using LibSelfExtractingInitCode for ZRuntime;
 
     bytes zcallZippedInitCode;
     uint256 zcallUnzippedSize;
-    bytes32 zcallUnzippedHash;
+    bytes8 zcallUnzippedHash;
     bytes zrunZippedInitCode;
     uint256 zrunUnzippedSize;
-    bytes32 zrunUnzippedHash;
+    bytes8 zrunUnzippedHash;
 
     constructor() {
         {
             bytes memory creationCode = type(ZCallTestContract).creationCode;
             zcallZippedInitCode = _zip(creationCode);
             zcallUnzippedSize = creationCode.length;
-            zcallUnzippedHash = keccak256(creationCode);
+            zcallUnzippedHash = bytes8(keccak256(creationCode));
         }
         {
             bytes memory creationCode = type(ZRunTestContract).creationCode;
             zrunZippedInitCode = _zip(creationCode);
             zrunUnzippedSize = creationCode.length;
-            zrunUnzippedHash = keccak256(creationCode);
+            zrunUnzippedHash = bytes8(keccak256(creationCode));
         }
     }
 
@@ -42,7 +44,7 @@ contract ZRuntimeTest is ZRuntime, ZExecution, ZipUtil, Test {
     function test_zcall_result() external {
         bytes memory hashPayload = bytes("hello, world!");
         ZCallTestContract zipped = ZCallTestContract(_deploy(
-            this.createSelfExtractingZCallInitCode(zcallZippedInitCode, zcallUnzippedSize, zcallUnzippedHash)
+            ZRuntime(this).createSelfExtractingZCallInitCode(zcallZippedInitCode, zcallUnzippedSize, zcallUnzippedHash)
         ));
         bytes32 h = zipped.hash(hashPayload);
         assertEq(h, keccak256(hashPayload));
@@ -50,7 +52,7 @@ contract ZRuntimeTest is ZRuntime, ZExecution, ZipUtil, Test {
 
     function test_zcall_failure() external {
         ZCallTestContract zipped = ZCallTestContract(_deploy(
-            this.createSelfExtractingZCallInitCode(zcallZippedInitCode, zcallUnzippedSize, zcallUnzippedHash)
+            ZRuntime(this).createSelfExtractingZCallInitCode(zcallZippedInitCode, zcallUnzippedSize, zcallUnzippedHash)
         ));
         vm.expectRevert('woops');
         zipped.conditionalFailure(1337);
@@ -58,7 +60,7 @@ contract ZRuntimeTest is ZRuntime, ZExecution, ZipUtil, Test {
 
     function test_zcall_doesNotAcceptEth() external {
         ZCallTestContract zipped = ZCallTestContract(_deploy(
-            this.createSelfExtractingZCallInitCode(zcallZippedInitCode, zcallUnzippedSize, zcallUnzippedHash)
+            ZRuntime(this).createSelfExtractingZCallInitCode(zcallZippedInitCode, zcallUnzippedSize, zcallUnzippedHash)
         ));
         vm.expectRevert();
         zipped.conditionalFailure{value: 1}(1234);
@@ -67,7 +69,7 @@ contract ZRuntimeTest is ZRuntime, ZExecution, ZipUtil, Test {
     function test_zrun_result() external {
         bytes memory payload = bytes("hello, world!");
         ZRunTestContract zipped = ZRunTestContract(_deploy(
-            this.createSelfExtractingZRunInitCode(zrunZippedInitCode, zrunUnzippedSize, zrunUnzippedHash)
+            ZRuntime(this).createSelfExtractingZRunInitCode(zrunZippedInitCode, zrunUnzippedSize, zrunUnzippedHash)
         ));
         bytes memory r = zipped.run(1234, payload);
         assertEq(r, payload);
@@ -76,7 +78,7 @@ contract ZRuntimeTest is ZRuntime, ZExecution, ZipUtil, Test {
     function test_zrun_failure() external {
         bytes memory payload = bytes("hello, world!");
         ZRunTestContract zipped = ZRunTestContract(_deploy(
-            this.createSelfExtractingZRunInitCode(zrunZippedInitCode, zrunUnzippedSize, zrunUnzippedHash)
+            ZRuntime(this).createSelfExtractingZRunInitCode(zrunZippedInitCode, zrunUnzippedSize, zrunUnzippedHash)
         ));
         vm.expectRevert(CreationFailedError.selector);
         zipped.run(1337, payload);
@@ -85,7 +87,7 @@ contract ZRuntimeTest is ZRuntime, ZExecution, ZipUtil, Test {
     function test_zrun_doesNotAcceptEth() external {
         bytes memory payload = bytes("hello, world!");
         ZRunTestContract zipped = ZRunTestContract(_deploy(
-            this.createSelfExtractingZRunInitCode(zrunZippedInitCode, zrunUnzippedSize, zrunUnzippedHash)
+            ZRuntime(this).createSelfExtractingZRunInitCode(zrunZippedInitCode, zrunUnzippedSize, zrunUnzippedHash)
         ));
         vm.expectRevert();
         zipped.run{value: 1}(1234, payload);
