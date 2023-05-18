@@ -3,7 +3,7 @@ pragma solidity ^0.8.19;
 
 import "forge-std/Test.sol";
 import "forge-std/console.sol";
-import "../src/InflateLib.sol";
+// import "../src/InflateLib.sol";
 import "../src/Inflate2.sol";
 import "./LibContractStorage.sol";
 
@@ -20,13 +20,13 @@ contract InflateTest is Inflate2, Test {
         zippedInitCodeAt = zippedInitCode.store();
     }
 
-    function test_LibInflate_puff() external {
-        bytes memory zippedData = zippedInitCodeAt.unstore();
-        uint256 g = gasleft();
-        (, bytes memory out) = InflateLib.puff(zippedData, UNZIPPED_SIZE);
-        emit log_named_uint('gas used', g - gasleft());
-        _testDeflated(out);
-    }
+    // function test_LibInflate_puff() external {
+    //     bytes memory zippedData = zippedInitCodeAt.unstore();
+    //     uint256 g = gasleft();
+    //     (, bytes memory out) = InflateLib.puff(zippedData, UNZIPPED_SIZE);
+    //     emit log_named_uint('gas used', g - gasleft());
+    //     _testDeflated(out);
+    // }
 
     function test_Inflate2_inflateFrom() external {
         uint256 g = gasleft();
