@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity ^0.8.19;
+pragma solidity ^0.8.20;
 
 /// @notice Solidity implementation of zlib deflate.
 /// @dev Optimistic form of:
 ///      https://github.com/adlerjohn/inflate-sol/blob/2a88141f5226da9d0252be4a456a2e0b23ba3d0e/contracts/InflateLib.sol
-/// @author @adlerjohn (https://github.com/adlerjohn)
-/// @author @merklejerk (https://github.com/merklejerk)
+/// @author @adlerjohn (https://github.com/adlerjohn) (original)
+/// @author @merklejerk (https://github.com/merklejerk) (this version)
 contract Inflate2 {
     // Maximum bits in a code
     uint256 constant MAXBITS = 15;

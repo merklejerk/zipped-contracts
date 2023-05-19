@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.19;
+pragma solidity ^0.8.20;
 
 import "forge-std/Test.sol";
 import "forge-std/console.sol";
-import "../src/ZExecution.sol";
+import "src/ZExecution.sol";
+import "script/ZipUtil.sol";
 import "./LibContractStorage.sol";
-import "./ZipUtil.sol";
 
 contract ZExecutionTest is ZExecution, ZipUtil, Test {
     using LibContractStorage for bytes;
