@@ -1,6 +1,6 @@
 # Zipped Contracts
 
-Compressed contracts that automatically self-extract when called. Useful if you want to seriously cut deployment costs or are running into bytecode size limits for logic that only ever gets called off-chain in an eth_call context (lens-type contracts, quoters, NFT metadata, etc).
+Compressed contracts that automatically self-extract when called. Useful if you want to drastically cut deployment costs or are running into bytecode size limits for logic that only ever gets called off-chain in an eth_call context (lens-type contracts, quoters, NFT metadata, etc).
 
 There is also a companion web app for deploying these contracts from your browser @ [bytecode.zip](https://bytecode.zip).
 

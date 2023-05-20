@@ -13,6 +13,7 @@ contract ZExecution is Inflate2 {
     error ZFail();
     error ZSuccess();
 
+    // Revert if the current execution context is inside a staticcall().
     modifier notStaticContext() {
         {
             bool isStaticcall;
