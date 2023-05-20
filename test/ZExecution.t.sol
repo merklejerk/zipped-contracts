@@ -72,6 +72,18 @@ contract ZExecutionTest is ZExecution, ZipUtil, Test {
         );
     }
 
+    function test_zcall_staticContext() external {
+        vm.expectRevert(StaticContextError.selector);
+        IStaticExecution(address(this)).zcall(
+            zcallZipped,
+            1,
+            zcallZipped.code.length-1,
+            zcallUnzippedSize,
+            zcallUnzippedHash,
+            abi.encodeCall(ZCallTestContract.conditionalFailure, (1234))
+        );
+    }
+
     function test_zrun_result() external {
         bytes memory payload = bytes("hello, world!");
         bytes memory r = this.zrun(
@@ -110,6 +122,45 @@ contract ZExecutionTest is ZExecution, ZipUtil, Test {
             abi.encodeWithSelector(bytes4(0), 1234, payload)
         );
     }
+
+    function test_zrun_staticContext() external {
+        bytes memory payload = bytes("hello, world!");
+        vm.expectRevert(StaticContextError.selector);
+        IStaticExecution(address(this)).zrun(
+            zrunZipped,
+            1,
+            zrunZipped.code.length-1,
+            zrunUnzippedSize,
+            zrunUnzippedHash,
+            abi.encodeWithSelector(bytes4(0), 1234, payload)
+        );
+    }
+}
+
+interface IStaticExecution {
+    function zcall(
+        address zipped,
+        uint256 dataOffset,
+        uint256 dataSize,
+        uint256 unzippedSize,
+        bytes8 unzippedHash,
+        bytes calldata callData
+    )
+        external
+        view
+        returns (bytes memory result);
+
+    function zrun(
+        address zipped,
+        uint256 dataOffset,
+        uint256 dataSize,
+        uint256 unzippedSize,
+        bytes8 unzippedHash,
+        bytes calldata initArgs
+    )
+        external
+        view
+        returns (bytes memory result);
 }
 
 contract ZCallTestContract {

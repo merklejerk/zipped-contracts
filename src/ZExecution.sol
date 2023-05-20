@@ -9,8 +9,25 @@ contract ZExecution is Inflate2 {
     error OnlySelfError();
     error CreationFailedError();
     error UnzippedHashMismatchError();
-    error __Fail();
-    error __Success();
+    error StaticContextError();
+    error ZFail();
+    error ZSuccess();
+
+    modifier notStaticContext() {
+        {
+            bool isStaticcall;
+            bytes4 selector = this.__checkStaticContext.selector;
+            assembly {
+                mstore(0x00, selector)
+                pop(call(1200, address(), 0, 0x00, 0x04, 0x00, 0x00))
+                isStaticcall := iszero(eq(returndatasize(), 1))
+            }
+            if (isStaticcall) {
+                revert StaticContextError();
+            }
+        }
+        _;
+    }
     
     /// @notice Make an arbitrary function call on a zipped contract.
     /// @dev The contract will be unzipped, deployed, then called.
@@ -82,11 +99,11 @@ contract ZExecution is Inflate2 {
             if (r.length >= 4) {
                 bytes4 selector;
                 assembly("memory-safe") { selector := mload(add(r, 0x20)) }
-                if (selector == __Fail.selector) {
+                if (selector == ZFail.selector) {
                     assembly("memory-safe") {
                         revert(add(r, 0x24), sub(mload(r), 0x04))
                     }
-                } else if (selector == __Success.selector) {
+                } else if (selector == ZSuccess.selector) {
                     assembly("memory-safe") {
                         return(add(r, 0x24), sub(mload(r), 0x04))
                     }
@@ -104,6 +121,7 @@ contract ZExecution is Inflate2 {
         bytes memory callData
     )
         external
+        notStaticContext
     {
         if (msg.sender != address(this)) {
             revert OnlySelfError();
@@ -117,7 +135,7 @@ contract ZExecution is Inflate2 {
         }
         (bool b, bytes memory r) = unzipped.call(callData);
         uint256 len = r.length;
-        bytes4 selector = b ? __Success.selector : __Fail.selector;
+        bytes4 selector = b ? ZSuccess.selector : ZFail.selector;
         assembly {
             mstore(r, shr(224, selector))
             revert(add(r, 28), add(len, 4))
@@ -198,11 +216,11 @@ contract ZExecution is Inflate2 {
             if (r.length >= 4) {
                 bytes4 selector;
                 assembly("memory-safe") { selector := mload(add(r, 0x20)) }
-                if (selector == __Fail.selector) {
+                if (selector == ZFail.selector) {
                     assembly("memory-safe") {
                         revert(add(r, 0x24), sub(mload(r), 0x04))
                     }
-                } else if (selector == __Success.selector) {
+                } else if (selector == ZSuccess.selector) {
                     assembly("memory-safe") {
                         return(add(r, 0x24), sub(mload(r), 0x04))
                     }
@@ -220,6 +238,7 @@ contract ZExecution is Inflate2 {
         bytes calldata initArgs
     )
         external
+        notStaticContext
     {
         if (msg.sender != address(this)) {
             revert OnlySelfError();
@@ -236,10 +255,17 @@ contract ZExecution is Inflate2 {
         }
         bytes memory runtime = unzipped.code;
         uint256 len = runtime.length;
-        bytes4 selector = __Success.selector;
+        bytes4 selector = ZSuccess.selector;
         assembly {
             mstore(runtime, shr(224, selector))
             revert(add(runtime, 28), add(len, 4))
+        }
+    }
+
+    function __checkStaticContext() external {
+        assembly {
+            log0(0x00, 0x00)
+            revert(0x00, 0x01)
         }
     }
 }
