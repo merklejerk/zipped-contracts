@@ -1,24 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.20;
 
-import "./ZRuntime.sol";
+import "./Z.sol";
 
 /// @notice Utility for generating deployable initcode for self-extracting contracts.
 /// @dev Not meant to be deployed.
 /// @author merklejerk (https://github.com/merklejerk)
-library LibSelfExtractingInitCode {
+library LibZRuntime {
     error SafeCastError();
 
     /// @notice Deploy a self-extracting zcall contract.
-    /// @param z ZRuntime instance.
+    /// @param z Z instance.
     /// @param zippedInitCode The zipped init code of the original contract.
     /// @param unzippedInitCodeSize The size of the unzipped init code of the original contract.
     /// @param unzippedInitCodeHash The hash of the unzipped init code of the original contract.
     function deploySelfExtractingZCallInitCode(
-        ZRuntime z,
+        Z z,
         bytes memory zippedInitCode,
         uint256 unzippedInitCodeSize,
-        bytes8 unzippedInitCodeHash
+        bytes32 unzippedInitCodeHash
     )
         internal
         returns (address deployed)
@@ -36,15 +36,15 @@ library LibSelfExtractingInitCode {
     }
 
     /// @notice Deploy a self-extracting zrun contract.
-    /// @param z ZRuntime instance.
+    /// @param z Z instance.
     /// @param zippedInitCode The zipped init code of the original contract.
     /// @param unzippedInitCodeSize The size of the unzipped init code of the original contract.
     /// @param unzippedInitCodeHash The hash of the unzipped init code of the original contract.
     function deploySelfExtractingZRunInitCode(
-        ZRuntime z,
+        Z z,
         bytes memory zippedInitCode,
         uint256 unzippedInitCodeSize,
-        bytes8 unzippedInitCodeHash
+        bytes32 unzippedInitCodeHash
     )
         internal
         returns (address deployed)
@@ -62,15 +62,15 @@ library LibSelfExtractingInitCode {
     }
 
     /// @notice Create deployable initcode for a self-extracting zcall contract.
-    /// @param z ZRuntime instance.
+    /// @param z Z instance.
     /// @param zippedInitCode The zipped init code of the original contract.
     /// @param unzippedInitCodeSize The size of the unzipped init code of the original contract.
     /// @param unzippedInitCodeHash The hash of the unzipped init code of the original contract.
     function createSelfExtractingZCallInitCode(
-        ZRuntime z,
+        Z z,
         bytes memory zippedInitCode,
         uint256 unzippedInitCodeSize,
-        bytes8 unzippedInitCodeHash
+        bytes32 unzippedInitCodeHash
     )
         internal
         pure
@@ -88,15 +88,15 @@ library LibSelfExtractingInitCode {
     }
 
     /// @notice Create deployable initcode for a self-extracting zrun contract.
-    /// @param z ZRuntime instance.
+    /// @param z Z instance.
     /// @param zippedInitCode The zipped init code of the original contract.
     /// @param unzippedInitCodeSize The size of the unzipped init code of the original contract.
     /// @param unzippedInitCodeHash The hash of the unzipped init code of the original contract.
     function createSelfExtractingZRunInitCode(
-        ZRuntime z,
+        Z z,
         bytes memory zippedInitCode,
         uint256 unzippedInitCodeSize,
-        bytes8 unzippedInitCodeHash
+        bytes32 unzippedInitCodeHash
     )
         internal
         pure
@@ -118,10 +118,10 @@ library LibSelfExtractingInitCode {
     /// @param unzippedInitCodeSize The size of the unzipped init code of the original contract.
     /// @param unzippedInitCodeHash The hash of the unzipped init code of the original contract.
     function createSelfExtractingZCallRuntime(
-        ZRuntime z,
+        Z z,
         bytes memory zippedInitCode,
         uint256 unzippedInitCodeSize,
-        bytes8 unzippedInitCodeHash
+        bytes32 unzippedInitCodeHash
     )
         internal
         pure
@@ -129,7 +129,7 @@ library LibSelfExtractingInitCode {
     {
         return _createSelfExtractingRuntime(
             z,
-            ZRuntime.selfExtractingZCallFallback__fq1aqw47v.selector,
+            ZFallback.selfExtractingZCallFallback__fq1aqw47v.selector,
             zippedInitCode,
             unzippedInitCodeSize,
             unzippedInitCodeHash
@@ -141,10 +141,10 @@ library LibSelfExtractingInitCode {
     /// @param unzippedInitCodeSize The size of the unzipped init code of the original contract.
     /// @param unzippedInitCodeHash The hash of the unzipped init code of the original contract.
     function createSelfExtractingZRunRuntime(
-        ZRuntime z,
+        Z z,
         bytes memory zippedInitCode,
         uint256 unzippedInitCodeSize,
-        bytes8 unzippedInitCodeHash
+        bytes32 unzippedInitCodeHash
     )
         internal
         pure
@@ -152,7 +152,7 @@ library LibSelfExtractingInitCode {
     {
         return _createSelfExtractingRuntime(
             z,
-            ZRuntime.selfExtractingZRunFallback__wme3t.selector,
+            ZFallback.selfExtractingZRunFallback__wme3t.selector,
             zippedInitCode,
             unzippedInitCodeSize,
             unzippedInitCodeHash
@@ -160,11 +160,11 @@ library LibSelfExtractingInitCode {
     }
 
     function _createSelfExtractingRuntime(
-        ZRuntime z,
+        Z z,
         bytes4 fallbackSelector,
         bytes memory zippedInitCode,
         uint256 unzippedInitCodeSize,
-        bytes8 unzippedInitCodeHash
+        bytes32 unzippedInitCodeHash
     )
         private
         pure
@@ -193,10 +193,9 @@ library LibSelfExtractingInitCode {
                     MSIZE
                     SUB
                     SWAP1
-                    CALLVALUE
                     PUSH20 0x0000000000000000000000000000000000000000 // zcall address
                     GAS
-                    CALL
+                    DELEGATECALL
                     CALLVALUE
                     RETURNDATASIZE
                     // Copy return data
@@ -207,14 +206,14 @@ library LibSelfExtractingInitCode {
                     // Return or revert
                     SWAP2
                     ISZERO
-                    PUSH2 0x3C
+                    PUSH2 0x3B
                     JUMPI
                     RETURN
-                    JUMPDEST // :0x3C
+                    JUMPDEST // :0x3B
                     REVERT
                 METADATA:
                     uint24(unzippedInitCodeSize)
-                    bytes8(unzippedInitCodeHash)
+                    bytes32(unzippedInitCodeHash)
                 DATA:
                     bytes(zippedInitCode)
         **********************************************************************/
@@ -222,12 +221,12 @@ library LibSelfExtractingInitCode {
             //// FALLBACK()
             hex"3415600657fe5b60",
             uint8(uint32(fallbackSelector)),
-            hex"3452363459373434601c805903903473",
+            hex"3452363459373434601c8059039073",
             address(z),
-            hex"5af1343d3d34343e911561003c57f35bfd",
+            hex"5af4343d3d34343e911561003b57f35bfd",
             //// METADATA
             _safeCastToUint24(unzippedInitCodeSize),
-            bytes8(unzippedInitCodeHash),
+            bytes32(unzippedInitCodeHash),
             //// ZIPPED DATA
             zippedInitCode
         );

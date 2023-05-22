@@ -3,13 +3,14 @@ pragma solidity ^0.8.20;
 
 import "./ZExecution.sol";
 import "./ZRuntimeConstants.sol";
+import "./ZBase.sol";
 
-/// @dev Self-extracting functions for zipped contracts.
+/// @dev Fallback handlers for Self-extracting zipped contracts.
 /// @author merklejerk (https://github.com/merklejerk)
-contract ZRuntime {
+contract ZFallback is ZBase {
 
     /// @dev The fallback handler for a self-extracting zcall contract.
-    ///      The self-extracting zcall contract always calls this function when it receives
+    ///      The self-extracting zcall contract always delegatecalls this function when it receives
     ///      any call.
     ///      Although it takes no args, it expects the calldata from the self-extracting
     ///      contract's fallback to be appended to msg.data (our calldata).
@@ -19,7 +20,7 @@ contract ZRuntime {
     }
     
     /// @dev The fallback handler for a self-extracting zrun contract.
-    ///      The self-extracting zrun contract always calls this function when it receives
+    ///      The self-extracting zrun contract always delegatecalls this function when it receives
     ///      any call.
     ///      Although it takes no args, it expects the calldata from the self-extracting
     ///      contract's fallback to be appended to msg.data (our calldata).
@@ -33,25 +34,24 @@ contract ZRuntime {
         uint256 ZIPPED_DATA_OFFSET = ZRuntimeConstants.ZIPPED_DATA_OFFSET;
         uint256 METADATA_SIZE = ZRuntimeConstants.METADATA_SIZE;
 
-        uint256 zippedDataSize = msg.sender.code.length - ZIPPED_DATA_OFFSET;
+        uint256 zippedDataSize = address(this).code.length - ZIPPED_DATA_OFFSET;
         uint24 unzippedSize;
-        bytes8 unzippedHash;
+        bytes32 unzippedHash;
         // Read metadata from runtime code.
         assembly("memory-safe") {
             let p := mload(0x40)
             // Metadata comes right after the fallback.
-            extcodecopy(caller(), p, FALLBACK_SIZE, METADATA_SIZE)
+            extcodecopy(address(), p, FALLBACK_SIZE, METADATA_SIZE)
             unzippedSize := shr(232, mload(p)) // 3 bytes
-            unzippedHash := shl(192, shr(192, mload(add(p, 3)))) // 8 bytes
+            unzippedHash := mload(add(p, 3)) // 32 bytes
         }
         // Call the zip execute function.
-        (bool b, bytes memory r) = address(this).call(abi.encodeWithSelector(execSelector,
-            msg.sender,
+        (bool b, bytes memory r) = _IMPL.delegatecall(abi.encodeWithSelector(execSelector,
             ZIPPED_DATA_OFFSET,
             zippedDataSize,
             unzippedSize,
             unzippedHash,
-            // The original calldata for self-extracting contract is appended right
+            // The original calldata for zipped contract call is appended right
             // after ours.
             msg.data[4:]
         ));
@@ -61,5 +61,4 @@ contract ZRuntime {
         }
         assembly { return(add(r, 0x20), mload(r)) }
     }
-
 }

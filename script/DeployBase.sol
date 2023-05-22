@@ -3,14 +3,14 @@ pragma solidity ^0.8.20;
 
 import "forge-std/Script.sol";
 import "forge-std/console.sol";
-import "src/LibSelfExtractingInitCode.sol";
+import "src/LibZRuntime.sol";
 import "./ZipUtil.sol";
 import "./LibAddresses.sol";
 
 contract DeployBase is Script, ZipUtil {
     function _zcallDeploy(bytes memory unzippedInitCode) internal returns (address deployed) {
-        deployed = LibSelfExtractingInitCode.deploySelfExtractingZCallInitCode(
-            ZRuntime(LibAddresses.getZ()),
+        deployed = LibZRuntime.deploySelfExtractingZCallInitCode(
+            LibAddresses.getZ(),
             _zip(unzippedInitCode),
             unzippedInitCode.length,
             bytes8(keccak256(unzippedInitCode))
@@ -19,8 +19,8 @@ contract DeployBase is Script, ZipUtil {
     }
     
     function _zrunDeploy(bytes memory unzippedInitCode) internal returns (address deployed) {
-        deployed = LibSelfExtractingInitCode.deploySelfExtractingZRunInitCode(
-            ZRuntime(LibAddresses.getZ()),
+        deployed = LibZRuntime.deploySelfExtractingZRunInitCode(
+            LibAddresses.getZ(),
             _zip(unzippedInitCode),
             unzippedInitCode.length,
             bytes8(keccak256(unzippedInitCode))
@@ -28,7 +28,7 @@ contract DeployBase is Script, ZipUtil {
         summarize(deployed, unzippedInitCode.length);
     }
 
-    function summarize(address deployed, uint256 unzippedSize) private {
+    function summarize(address deployed, uint256 unzippedSize) private view {
         console.log(string(abi.encodePacked(
             'Deployed zipped contract to: ',
             vm.toString(deployed),

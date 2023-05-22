@@ -11,165 +11,174 @@ contract ZExecutionTest is ZExecution, ZipUtil, Test {
     using LibContractStorage for bytes;
     using LibContractStorage for address;
 
-    address zcallZipped;
+    ZCallTestContract zcallZipped;
     uint256 zcallUnzippedSize;
-    bytes8 zcallUnzippedHash;
-    address zrunZipped;
+    bytes32 zcallUnzippedHash;
+    ZRunTestContract zrunZipped;
     uint256 zrunUnzippedSize;
-    bytes8 zrunUnzippedHash;
+    bytes32 zrunUnzippedHash;
 
     constructor() {
         {
             bytes memory creationCode = type(ZCallTestContract).creationCode;
             bytes memory zippedInitCode = _zip(creationCode);
             zcallUnzippedSize = creationCode.length;
-            zcallUnzippedHash = bytes8(keccak256(creationCode));
-            zcallZipped = zippedInitCode.store();
+            zcallUnzippedHash = keccak256(creationCode);
+            zcallZipped = ZCallTestContract(address(new ZippedContainer(
+                ZExecution(address(this)),
+                ZExecution.zcallWithRawResult.selector,
+                zippedInitCode,
+                zcallUnzippedSize,
+                zcallUnzippedHash
+            )));
         }
         {
             bytes memory creationCode = type(ZRunTestContract).creationCode;
             bytes memory zippedInitCode = _zip(creationCode);
             zrunUnzippedSize = creationCode.length;
-            zrunUnzippedHash = bytes8(keccak256(creationCode));
-            zrunZipped = zippedInitCode.store();
+            zrunUnzippedHash = keccak256(creationCode);
+            zrunZipped = ZRunTestContract(address(new ZippedContainer(
+                ZExecution(address(this)),
+                ZExecution.zrunWithRawResult.selector,
+                zippedInitCode,
+                zrunUnzippedSize,
+                zrunUnzippedHash
+            )));
         }
     }
 
     function test_zcall_result() external {
         bytes memory hashPayload = bytes("hello, world!");
-        bytes32 h = abi.decode(this.zcall(
-            zcallZipped,
-            1,
-            zcallZipped.code.length-1,
-            zcallUnzippedSize,
-            zcallUnzippedHash,
-            abi.encodeCall(ZCallTestContract.hash, (hashPayload))
-        ), (bytes32));
+        bytes32 h = zcallZipped.hash(hashPayload);
         assertEq(h, keccak256(hashPayload));
     }
 
     function test_zcall_failure() external {
         vm.expectRevert('woops');
-        this.zcall(
-            zcallZipped,
-            1,
-            zcallZipped.code.length-1,
-            zcallUnzippedSize,
-            zcallUnzippedHash,
-            abi.encodeCall(ZCallTestContract.conditionalFailure, (1337))
-        );
+        zcallZipped.conditionalFailure(1337);
     }
 
     function test_zcall_badHash() external {
+        ZippedFallback(address(zcallZipped)).__setHash(~zcallUnzippedHash);
         vm.expectRevert(UnzippedHashMismatchError.selector);
-        this.zcall(
-            zcallZipped,
-            1,
-            zcallZipped.code.length-1,
-            zcallUnzippedSize,
-            ~zcallUnzippedHash,
-            abi.encodeCall(ZCallTestContract.conditionalFailure, (1234))
-        );
+        zcallZipped.conditionalFailure(1234);
     }
 
     function test_zcall_staticContext() external {
         vm.expectRevert(StaticContextError.selector);
-        IStaticExecution(address(this)).zcall(
-            zcallZipped,
-            1,
-            zcallZipped.code.length-1,
-            zcallUnzippedSize,
-            zcallUnzippedHash,
-            abi.encodeCall(ZCallTestContract.conditionalFailure, (1234))
-        );
+        IStaticTestContracts(address(zcallZipped)).conditionalFailure(1234);
+    }
+
+    function test_zcall_reenter() external {
+        assertEq(zcallZipped.reenter(2), 2);
+    }
+
+    function test_zcall_twice() external {
+        bytes memory hashPayload1 = bytes("hello, world!");
+        bytes memory hashPayload2 = bytes("goodbye, world!");
+        bytes32 h1 = zcallZipped.hash(hashPayload1);
+        assertEq(h1, keccak256(hashPayload1));
+        bytes32 h2 = zcallZipped.hash(hashPayload2);
+        assertEq(h2, keccak256(hashPayload2));
     }
 
     function test_zrun_result() external {
         bytes memory payload = bytes("hello, world!");
-        bytes memory r = this.zrun(
-            zrunZipped,
-            1,
-            zrunZipped.code.length-1,
-            zrunUnzippedSize,
-            zrunUnzippedHash,
-            abi.encodeWithSelector(bytes4(0), 1234, payload)
-        );
-        assertEq(r, abi.encode(payload));
+        bytes memory r = zrunZipped.run(1234, payload);
+        assertEq(r, payload);
     }
 
     function test_zrun_failure() external {
         bytes memory payload = bytes("hello, world!");
         vm.expectRevert(CreationFailedError.selector);
-        this.zrun(
-            zrunZipped,
-            1,
-            zrunZipped.code.length-1,
-            zrunUnzippedSize,
-            zrunUnzippedHash,
-            abi.encodeWithSelector(bytes4(0), 1337, payload)
-        );
+        zrunZipped.run(1337, payload);
     }
 
     function test_zrun_badHash() external {
         bytes memory payload = bytes("hello, world!");
+        ZippedFallback(address(zrunZipped)).__setHash(~zrunUnzippedHash);
         vm.expectRevert(UnzippedHashMismatchError.selector);
-        this.zrun(
-            zrunZipped,
-            1,
-            zrunZipped.code.length-1,
-            zrunUnzippedSize,
-            ~zrunUnzippedHash,
-            abi.encodeWithSelector(bytes4(0), 1234, payload)
-        );
+        zrunZipped.run(1234, payload);
     }
 
     function test_zrun_staticContext() external {
         bytes memory payload = bytes("hello, world!");
         vm.expectRevert(StaticContextError.selector);
-        IStaticExecution(address(this)).zrun(
-            zrunZipped,
-            1,
-            zrunZipped.code.length-1,
-            zrunUnzippedSize,
-            zrunUnzippedHash,
-            abi.encodeWithSelector(bytes4(0), 1234, payload)
-        );
+        IStaticTestContracts(address(zrunZipped)).run(1234, payload);
     }
 }
 
-interface IStaticExecution {
-    function zcall(
-        address zipped,
-        uint256 dataOffset,
-        uint256 dataSize,
-        uint256 unzippedSize,
-        bytes8 unzippedHash,
-        bytes calldata callData
-    )
-        external
-        view
-        returns (bytes memory result);
+contract ZippedStorage {
+    uint256[1024] internal __padding;
+    ZExecution internal _z;
+    bytes4 internal _runSelector;
+    uint256 internal _dataOffset;
+    uint256 internal _unzippedSize;
+    bytes32 internal _unzippedHash;
+}
 
-    function zrun(
-        address zipped,
-        uint256 dataOffset,
-        uint256 dataSize,
+contract ZippedFallback is ZippedStorage {
+    function __setHash(bytes32 h) external {
+        _unzippedHash = h;
+    }
+
+    fallback(bytes calldata callData) external returns (bytes memory r) {
+        bool b;
+        (b, r) = address(_z).delegatecall(abi.encodeWithSelector(
+            _runSelector,
+            _dataOffset,
+            address(this).code.length - _dataOffset,
+            _unzippedSize,
+            _unzippedHash,
+            callData
+        ));
+        if (!b) {
+            assembly { revert(add(r, 0x20), mload(r)) }
+        }
+    }
+}
+
+contract ZippedContainer is ZippedStorage {
+    constructor(
+        ZExecution z,
+        bytes4 runSelector,
+        bytes memory initCode,
         uint256 unzippedSize,
-        bytes8 unzippedHash,
-        bytes calldata initArgs
-    )
-        external
-        view
-        returns (bytes memory result);
+        bytes32 unzippedHash
+    ) {
+        _z = z;
+        _runSelector = runSelector;
+        _dataOffset = type(ZippedFallback).runtimeCode.length;
+        _unzippedSize = unzippedSize;
+        _unzippedHash = unzippedHash;
+        bytes memory runtime = abi.encodePacked(
+            type(ZippedFallback).runtimeCode,
+            initCode
+        );
+       assembly { return(add(runtime, 0x20), mload(runtime)) } 
+    }
+}
+
+interface IStaticTestContracts {
+    function hash(bytes memory data) external view returns (bytes32);
+    function conditionalFailure(uint256 x) external view;
+    function run(uint256 x, bytes memory data) external view returns (bytes memory);
 }
 
 contract ZCallTestContract {
-    function hash(bytes memory data) external pure returns (bytes32) {
+    function hash(bytes memory data) external returns (bytes32) {
         return keccak256(data);
     }
 
-    function conditionalFailure(uint256 x) external pure {
+    function conditionalFailure(uint256 x) external {
         require(x != 1337, 'woops');
+    }
+
+    function reenter(uint256 n) external returns (uint256 r) {
+        if (n > 0) {
+            return this.reenter(n - 1) + 1;
+        }
+        return 0;
     }
 }
 
