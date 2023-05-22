@@ -58,6 +58,8 @@ contract ZExecution is Inflate2, ZBase {
         bytes calldata callData
     )
         external
+        onlyDelegateCall
+        noStaticContext
         // Naked result of the call is returned.
     {
         bytes memory initCode;
@@ -100,8 +102,6 @@ contract ZExecution is Inflate2, ZBase {
         bytes memory callData
     )
         external
-        onlyDelegateCall
-        noStaticContext
     {
         if (unzipped.code.length == 0) {
             assembly {
@@ -140,6 +140,8 @@ contract ZExecution is Inflate2, ZBase {
         bytes calldata initArgs
     )
         external
+        onlyDelegateCall
+        noStaticContext
         // Naked runtime code is returned.
     {
         //  Unzip initcode.
@@ -169,8 +171,6 @@ contract ZExecution is Inflate2, ZBase {
         bytes calldata initArgs
     )
         external
-        onlyDelegateCall
-        noStaticContext
     {
         address unzipped;
         {

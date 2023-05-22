@@ -51,15 +51,21 @@ contract ZRuntimeTest is Z, ZipUtil, Test {
         assertEq(zipped.reenter(2), 2);
     }
 
-    // TODO: This should not work.
     function test_zcall_storage() external {
         ZCallTestContract zipped = ZCallTestContract(
             this.deploySelfExtractingZCallInitCode(zcallZippedInitCode, zcallUnzippedSize, zcallUnzippedHash)
         );
         assertEq(zipped.getX(), 1);
-        zipped.setX(2);
-        assertEq(zipped.getX(), 2);
     }
+
+    // // Does not work because foundry does not delete deployed code during a revert.
+    // function test_zcall_noSideEffects() external {
+    //     ZCallTestContract zipped = ZCallTestContract(
+    //         this.deploySelfExtractingZCallInitCode(zcallZippedInitCode, zcallUnzippedSize, zcallUnzippedHash)
+    //     );
+    //     zipped.setX(100);
+    //     assertEq(zipped.getX(), 1);
+    // }
 
     function test_zcall_failure() external {
         ZCallTestContract zipped = ZCallTestContract(
