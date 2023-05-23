@@ -1,6 +1,6 @@
 # Zipped Contracts
 
-Compressed contracts that automatically self-extract when called. Useful for cheaply deploying contracts that are always called off-chain in an `eth_call` context. There are many examples of these contracts used in modern protocols/dapps: "lens"-type contracts, quoters, NFT metadata, etc.
+Compressed contracts that automatically self-extract when called. Useful for cheaply deploying contracts that are always called off-chain in an `eth_call` context. There are many examples of these contracts used in modern protocols/dapps: "lens"-type helper contracts, quoters, NFT metadata, query helpers, etc.
 
 There is also a companion web app for deploying zipped contracts from your browser @ [bytecode.zip](https://bytecode.zip).
 
@@ -25,7 +25,7 @@ The self-extracting wrapper will perform the just-in-time decompression under th
 
 - Decompressing is a *very* expensive operation (upwards of 23M gas), so you should only call these contracts in the context of an `eth_call` where gas does not matter, i.e., not in a transaction that will be mined.
 - Zipped contracts do not support `payable` functions.
-- Off-chain helper and metadata contracts tend to have their functions writtens as read-only (`view` or `pure`). But since zipped contracts must be deployed just-in-time before the call can be made, top-level calls from another contract into the zipped contract cannot be made from inside a `staticcall()` context. You should cast the contract's interface to one with non-static functions to prevent the compiler from implictly generating a `staticcall()` when making calls.
+- Off-chain helper and metadata contracts tend to have their functions written as read-only (`view` or `pure`). But since zipped contracts must be deployed just-in-time before the call can be made, top-level calls from another contract into the zipped contract cannot be made from inside a `staticcall()` context. You should cast the contract's interface to one with non-static functions to prevent the compiler from implictly generating a `staticcall()` when making calls.
 - To emulate static guarantees of typical off-chain helper contracts, all zipped contracts will have their state changes undone by a revert on the top-level call. However, this only applies to the top-level call. Any calls beneath it that reenter the zipped contract can temporarily persist state, but will eventually be undone when the top-level call returns.
 - Zipped contracts cannot have their source/ABI verified on etherscan at the moment. If you want users to be able to interact with zipped contracts through etherscan, consider deploying a minimal contract with the same interface that forwards calls to the zipped version.
 
@@ -47,21 +47,25 @@ There are foundry [scripts](./script/) included in this repo that you can use to
 Most query-oriented contracts work out of the box as a ZCALL contract, with little to no modification. However, if your contract depends on the value of `msg.sender` or uses callbacks, there are some quirks to keep in mind.
 
 ### Addresses
-`address(this)` will be the deterministic, temporary deployment address of your unzipped contract, which is different from the zipped contract address. If a call is made to your contract through the zipped contract, `msg.sender` will be the zipped contract address, and the original caller of the zipped contract will be appended to your calldata as a full word (32 bytes). You can call `isZippedContract()` on the `Z` runtime to detect if an address is your zipped contract.
+`address(this)` will be the deterministic, temporary deployment address of your unzipped contract, which is different from the zipped contract address. If a call is made to your contract through the zipped contract, `msg.sender` will be the zipped contract address, and the original caller of the zipped contract will be appended to your calldata as a full word (32 bytes). You can call `isZippedContract()` on the `Z` runtime to detect if an address is your zipped contract:
+
+```solidity
+// Get the caller of the zipped contract.
+address caller = Z.isZippedContract(msg.sender, address(this))
+    ? abi.decode(msg.data[msg.data.length-32:], (address))
+    : msg.sender;
+}
+```
 
 ### Callbacks and Reentrancy
 You can reenter your unzipped contract either directly, via `this.xxx()`, or indirectly through the zipped contract's forwarder `ZIPPED_CONTRACT.xxx()`. But bear in mind the meaning of `msg.sender` in the latter case, as described previously.
-
-### State Changes do not Persist
 
 ## Writing ZRUN Contracts
 
 ZRUN contracts only have a single entry point and must be specially crafted to perform all their logic and explicitly return its result in its constructor. This can soften deployment bytecode size limits because only the result of the computation (not code) is deposited at the deployment address. The zipped version of your logic must still fit within the maximum deployment size, however.
 
 ### Addresses
-`address(this)` will always be the deterministic, temporary deployment address of your unzipped contract, which is different from the zipped contract address. `msg.sender` will always be the zipped contract.
-
-### Creating 
+`address(this)` will always be the deterministic, temporary deployment address of your unzipped contract, which is different from the zipped contract address. `msg.sender` will always be the zipped contract. You can recover the original caller of the zipped contract by decoding the last 32 bytes of your contract's initcode (accessible via `codecopy()` in assembly).
 
 ## `Z` Runtime Deployed Addresses
 This is the canonical runtime for zipped contracts, which handles decompression, execution, and cleanup.
@@ -82,22 +86,3 @@ $> git clone git@github.com:merklejerk/zipped-contracts.git && cd zipped-contrac
 $> forge install
 $> forge test -vvv
 ```
-
-- Around 50% savings for conventional opcode-heavy bytecode , even more for text/bitmap-heavy.
-- Around 50% savings for conventional opcode-heavy bytecode , even more for text/bitmap-heavy.
-    - Millions of gas.
-    - Doesn't matter much for eth_call contexts.
-- Around 50% savings for conventional opcode-heavy bytecode , even more for text/bitmap-heavy.
-    - Millions of gas.
-    - Doesn't matter much for eth_call contexts.
-- Seamless decompression.
-    - DIAGRAM.
-- No verification (yet)
-    - You can probably just deploy a small wrapper/forwarder contract later.
-- Not compatible with staticcall.
-    - Not really a problem for most eth_call contexts.
-    - Uses revert mechanism to prevent permanently writing state anyway.
-- No constructor args.
-
-
-
