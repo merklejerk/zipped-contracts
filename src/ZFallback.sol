@@ -7,7 +7,7 @@ import "./ZBase.sol";
 
 /// @dev Fallback handlers for Self-extracting zipped contracts.
 /// @author merklejerk (https://github.com/merklejerk)
-contract ZFallback is ZBase {
+contract ZFallback is ZExecution {
 
     /// @dev The fallback handler for a self-extracting zcall contract.
     ///      The self-extracting zcall contract always delegatecalls this function when it receives
@@ -29,22 +29,17 @@ contract ZFallback is ZBase {
         _handleSelfExtractingFallback(ZExecution.zrunWithRawResult.selector);
     }
 
+    /// @notice Check if a caller to an unzipped contract is the zipped version of that contract.
+    function isZippedCaller(address caller, address unzipped) external view returns (bool) {
+        (, bytes32 unzippedHash) = _readMetadata(caller);
+        return _computeZCallDeployAddress(caller, unzippedHash) == unzipped;
+    }
+
     function _handleSelfExtractingFallback(bytes4 execSelector) private {
-        uint256 FALLBACK_SIZE = ZRuntimeConstants.FALLBACK_SIZE;
         uint256 ZIPPED_DATA_OFFSET = ZRuntimeConstants.ZIPPED_DATA_OFFSET;
-        uint256 METADATA_SIZE = ZRuntimeConstants.METADATA_SIZE;
 
         uint256 zippedDataSize = address(this).code.length - ZIPPED_DATA_OFFSET;
-        uint24 unzippedSize;
-        bytes32 unzippedHash;
-        // Read metadata from runtime code.
-        assembly("memory-safe") {
-            let p := mload(0x40)
-            // Metadata comes right after the fallback.
-            extcodecopy(address(), p, FALLBACK_SIZE, METADATA_SIZE)
-            unzippedSize := shr(232, mload(p)) // 3 bytes
-            unzippedHash := mload(add(p, 3)) // 32 bytes
-        }
+        (uint24 unzippedSize, bytes32 unzippedHash) = _readMetadata(address(this));
         // Call the zip execute function.
         (bool b, bytes memory r) = _IMPL.delegatecall(abi.encodeWithSelector(execSelector,
             ZIPPED_DATA_OFFSET,
@@ -60,5 +55,21 @@ contract ZFallback is ZBase {
             assembly { revert(add(r, 0x20), mload(r)) }
         }
         assembly { return(add(r, 0x20), mload(r)) }
+    }
+
+    function _readMetadata(address zipped)
+        private view
+        returns (uint24 unzippedSize, bytes32 unzippedHash)
+    {
+        uint256 FALLBACK_SIZE = ZRuntimeConstants.FALLBACK_SIZE;
+        uint256 METADATA_SIZE = ZRuntimeConstants.METADATA_SIZE;
+        // Read metadata from zipped contract's bytecode.
+        assembly("memory-safe") {
+            let p := mload(0x40)
+            // Metadata comes right after the fallback.
+            extcodecopy(zipped, p, FALLBACK_SIZE, METADATA_SIZE)
+            unzippedSize := shr(232, mload(p)) // 3 bytes
+            unzippedHash := mload(add(p, 3)) // 32 bytes
+        }
     }
 }

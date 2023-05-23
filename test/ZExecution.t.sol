@@ -73,6 +73,10 @@ contract ZExecutionTest is ZExecution, ZipUtil, Test {
         assertEq(zcallZipped.reenter(2), 2);
     }
 
+    function test_zcall_reenterIndirect() external {
+        assertEq(zcallZipped.reenterIndirect(2), 2);
+    }
+
     function test_zcall_twice() external {
         bytes memory hashPayload1 = bytes("hello, world!");
         bytes memory hashPayload2 = bytes("goodbye, world!");
@@ -177,6 +181,13 @@ contract ZCallTestContract {
     function reenter(uint256 n) external returns (uint256 r) {
         if (n > 0) {
             return this.reenter(n - 1) + 1;
+        }
+        return 0;
+    }
+
+    function reenterIndirect(uint256 n) external returns (uint256 r) {
+        if (n > 0) {
+            return ZCallTestContract(msg.sender).reenterIndirect(n - 1) + 1;
         }
         return 0;
     }

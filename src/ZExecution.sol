@@ -58,8 +58,6 @@ contract ZExecution is Inflate2, ZBase {
         bytes calldata callData
     )
         external
-        onlyDelegateCall
-        noStaticContext
         // Naked result of the call is returned.
     {
         bytes memory initCode;
@@ -102,10 +100,17 @@ contract ZExecution is Inflate2, ZBase {
         bytes memory callData
     )
         external
+        onlyDelegateCall
+        noStaticContext
     {
         if (unzipped.code.length == 0) {
             assembly {
-                unzipped := create2(0, add(initCode, 0x20), mload(initCode), address())
+                unzipped := create2(
+                    0,
+                    add(initCode, 0x20),
+                    mload(initCode),
+                    address()
+                )
             }
             if (unzipped == address(0)) {
                 revert CreationFailedError();
@@ -140,8 +145,6 @@ contract ZExecution is Inflate2, ZBase {
         bytes calldata initArgs
     )
         external
-        onlyDelegateCall
-        noStaticContext
         // Naked runtime code is returned.
     {
         //  Unzip initcode.
@@ -171,12 +174,19 @@ contract ZExecution is Inflate2, ZBase {
         bytes calldata initArgs
     )
         external
+        onlyDelegateCall
+        noStaticContext
     {
         address unzipped;
         {
             bytes memory initCodeWithArgs = abi.encodePacked(initCode, initArgs[4:]);
             assembly {
-                unzipped := create(0, add(initCodeWithArgs, 0x20), mload(initCodeWithArgs))
+                unzipped := create2(
+                    0,
+                    add(initCodeWithArgs, 0x20),
+                    mload(initCodeWithArgs),
+                    address()
+                )
             }
         }
         if (unzipped == address(0)) {
@@ -241,12 +251,12 @@ contract ZExecution is Inflate2, ZBase {
     }
 
     function _computeZCallDeployAddress(address zipped, bytes32 initCodeHash)
-        private view
+        internal pure
         returns (address d)
     {
         return address(uint160(uint256(keccak256(abi.encodePacked(
             bytes1(0xff),
-            address(this),
+            zipped,
             uint256(uint160(zipped)),
             initCodeHash
         )))));

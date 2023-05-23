@@ -21,12 +21,13 @@ Most contracts can expect to see ~50% size/deployment cost reduction, and better
 
 
 ## Interacting with Zipped Contracts
-The self-extracting wrapper will perform the just-in-time decompression behind the scenes, so you can just directly call a function on the deployed zipped contract as if it were the unzipped contract. However, there are some things to be mindful of:
+The self-extracting wrapper will perform the just-in-time decompression under the hood, so you can just directly call a function on the deployed zipped contract as if it were the unzipped contract. However, there are some things to be mindful of:
 
-- Decompressing is a *very* expensive operation (upwards of 23M gas), so you should only call these contracts in the context of an `eth_call`, i.e., not in a transaction that will be mined.
-- The runtime will need to (temporarily) deploy the unzipped contract. This means that calls to the zipped contract inside of a `staticcall()` context will revert. If you are calling a zipped contract through another contract, either use a low-level `call()` construct or cast the interface of the zipped contract to one with non-`view` function declarations to prevent a `staticcall()` from occurring.
-- Zipped contracts cannot have their source/ABI verified on etherscan at the moment. If you want users to be able to interact with zipped contracts through etherscan, consider deploying a minimal contract with the same interface that forwards calls to the zipped version.
+- Decompressing is a *very* expensive operation (upwards of 23M gas), so you should only call these contracts in the context of an `eth_call` where gas does not matter, i.e., not in a transaction that will be mined.
+- Off-chain helper and metadata contracts tend to have their functions writtens as read-only (`view` or `pure`). But since zipped contracts must be deployed just-in-time before the call can be made, top-level* calls from another contract into the zipped contract cannot be made from inside a `staticcall()` context. You should cast the contract's interface to one with non-static functions to prevent the compiler from implictly generating a `staticcall()` when making calls.
+- To emulate static guarantees, all zipped contracts will have their state changes undone by a revert on the top-level call. However, this only applies to the top-level call. Any calls beneath it that reenter the zipped contract can temporarily persist state, but will be undone when the top-level call returns.
 - Zipped contracts do not support `payable` functions.
+- Zipped contracts cannot have their source/ABI verified on etherscan at the moment. If you want users to be able to interact with zipped contracts through etherscan, consider deploying a minimal contract with the same interface that forwards calls to the zipped version.
 
 ## ZCALL vs ZRUN Contracts
 There are two types of zipped contracts supported by the runtime. The simpler, and probably more popular, choice is ZCALL, which follows the flow described earlier. You don't have to do anything special to write ZCALL contracts; they just work. The ZCALL approach is designed to provide cheaper deployments.
@@ -40,14 +41,26 @@ This means ZRUN contracts only have one entry-point/function, which is their con
 ## Deploying Zipped Contracts
 There are foundry [scripts](./script/) included in this repo that you can use to deploy your contracts as self-extracting zipped contracts (or you can use [bytecode.zip](https://bytecode.zip)).
 
-## Self-Extracting ZCALL contracts
+## Writing ZCALL Contracts
 
+Most query-oriented contracts work out of the box as a ZCALL contract, with little to no modification. However, if your contract depends on the value of `msg.sender` or uses callbacks, there are some quirks to keep in mind.
 
-### Creating
+### Addresses
+`address(this)` will be the deterministic, temporary deployment address of your unzipped contract, which is different from the zipped contract address. If a call is made to your contract through the zipped contract, `msg.sender` will be the zipped contract address, and the original caller of the zipped contract will be appended to your calldata as a full word (32 bytes). You can call `isZippedContract()` on the `Z` runtime to detect if an address is your zipped contract.
 
-## Self-Extracting ZRUN contracts
+### Callbacks and Reentrancy
+You can reenter your unzipped contract either directly, via `this.xxx()`, or indirectly through the zipped contract's forwarder `ZIPPED_CONTRACT.xxx()`. But bear in mind the meaning of `msg.sender` in the latter case, as described previously.
 
-### Creating
+### State Changes do not Persist
+
+## Writing ZRUN Contracts
+
+ZRUN contracts only have a single entry point and must be specially crafted to perform all their logic and explicitly return its result in its constructor. This can soften deployment bytecode size limits because only the result of the computation (not code) is deposited at the deployment address. The zipped version of your logic must still fit within the maximum deployment size, however.
+
+### Addresses
+`address(this)` will always be the deterministic, temporary deployment address of your unzipped contract, which is different from the zipped contract address. `msg.sender` will always be the zipped contract.
+
+### Creating 
 
 ## `Z` Runtime Deployed Addresses
 This is the canonical runtime for zipped contracts, which handles decompression, execution, and cleanup.

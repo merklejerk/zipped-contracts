@@ -22,7 +22,10 @@ contract ZRuntimeTest is Z, ZipUtil, Test {
 
     constructor() {
         {
-            bytes memory creationCode = type(ZCallTestContract).creationCode;
+            bytes memory creationCode = abi.encodePacked(
+                type(ZCallTestContract).creationCode,
+                abi.encode(address(this))
+            );
             zcallZippedInitCode = _zip(creationCode);
             zcallUnzippedSize = creationCode.length;
             zcallUnzippedHash = keccak256(creationCode);
@@ -56,6 +59,35 @@ contract ZRuntimeTest is Z, ZipUtil, Test {
             this.deploySelfExtractingZCallInitCode(zcallZippedInitCode, zcallUnzippedSize, zcallUnzippedHash)
         );
         assertEq(zipped.getX(), 1);
+    }
+
+    function test_zcall_caller() external {
+        ZCallTestContract zipped = ZCallTestContract(
+            this.deploySelfExtractingZCallInitCode(zcallZippedInitCode, zcallUnzippedSize, zcallUnzippedHash)
+        );
+        assertEq(zipped.getCaller(), address(zipped));
+    }
+
+    function test_zcall_isZippedCaller() external {
+        ZCallTestContract zipped = ZCallTestContract(
+            this.deploySelfExtractingZCallInitCode(zcallZippedInitCode, zcallUnzippedSize, zcallUnzippedHash)
+        );
+        assertEq(zipped.getIsZippedCaller(), true);
+    }
+
+    // Must be split up between 2 tests because foundry does not clean up code in a tx.
+    function test_zcall_isReenteredZippedCaller() external {
+        ZCallTestContract zipped = ZCallTestContract(
+            this.deploySelfExtractingZCallInitCode(zcallZippedInitCode, zcallUnzippedSize, zcallUnzippedHash)
+        );
+        assertEq(zipped.getReenteredIsZippedCaller(), false);
+    }
+
+    function test_zcall_originalCaller() external {
+        ZCallTestContract zipped = ZCallTestContract(
+            this.deploySelfExtractingZCallInitCode(zcallZippedInitCode, zcallUnzippedSize, zcallUnzippedHash)
+        );
+        assertEq(zipped.getOriginalCaller(), address(this));
     }
 
     // // Does not work because foundry does not delete deployed code during a revert.
@@ -113,6 +145,11 @@ contract ZRuntimeTest is Z, ZipUtil, Test {
 
 contract ZCallTestContract {
     uint256 _x = 1;
+    Z _z;
+
+    constructor(Z z) {
+        _z = z;
+    }
 
     function getX() external returns (uint256) {
         return _x;
@@ -135,6 +172,28 @@ contract ZCallTestContract {
             return this.reenter(n - 1) + 1;
         }
         return 0;
+    }
+
+    function getCaller() external returns (address) {
+        return msg.sender;
+    }
+
+    function getIsZippedCaller() external returns (bool) {
+        return _z.isZippedCaller(msg.sender, address(this));
+    }
+
+    function getReenteredIsZippedCaller() external returns (bool) {
+        if (msg.sender != address(this)) {
+            return this.getReenteredIsZippedCaller();
+        }
+        return _z.isZippedCaller(msg.sender, address(this));
+    }
+
+    function getOriginalCaller() external returns (address) {
+        if (_z.isZippedCaller(msg.sender, address(this))) {
+            return abi.decode(msg.data[msg.data.length - 32:], (address));
+        }
+        return msg.sender;
     }
 }
 

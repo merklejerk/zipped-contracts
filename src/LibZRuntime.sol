@@ -173,21 +173,16 @@ library LibZRuntime {
         /**********************************************************************
             Runtime for a self-extracting contract will be:
                 FALLBACK():
-                    CALLVALUE
-                    ISZERO
-                    PUSH1 0x06
-                    JUMPI
-                    INVALID
-                    JUMPDEST // :0x06
+                    RETURNDATASIZE
                     PUSH1 0x00 // fallback selector (both fallbacks have 1-significant-byte selectors)
-                    CALLVALUE
+                    RETURNDATASIZE
                     MSTORE
                     CALLDATASIZE
-                    CALLVALUE
+                    RETURNDATASIZE
                     MSIZE
                     CALLDATACOPY
-                    CALLVALUE
-                    CALLVALUE
+                    RETURNDATASIZE
+                    RETURNDATASIZE
                     PUSH1 28
                     DUP1
                     MSIZE
@@ -196,20 +191,20 @@ library LibZRuntime {
                     PUSH20 0x0000000000000000000000000000000000000000 // zcall address
                     GAS
                     DELEGATECALL
-                    CALLVALUE
+                    DUP2
                     RETURNDATASIZE
                     // Copy return data
                     RETURNDATASIZE
-                    CALLVALUE
-                    CALLVALUE
+                    DUP3
+                    DUP1
                     RETURNDATACOPY
                     // Return or revert
                     SWAP2
                     ISZERO
-                    PUSH2 0x3B
+                    PUSH2 0x35
                     JUMPI
                     RETURN
-                    JUMPDEST // :0x3B
+                    JUMPDEST // :0x35
                     REVERT
                 METADATA:
                     uint24(unzippedInitCodeSize)
@@ -217,13 +212,14 @@ library LibZRuntime {
                 DATA:
                     bytes(zippedInitCode)
         **********************************************************************/
+        
         runtime = abi.encodePacked(
             //// FALLBACK()
-            hex"3415600657fe5b60",
+            hex"3d60",
             uint8(uint32(fallbackSelector)),
-            hex"3452363459373434601c8059039073",
+            hex"3d52363d59373d3d601c8059039073",
             address(z),
-            hex"5af4343d3d34343e911561003b57f35bfd",
+            hex"5af4813d3d82803e911561003557f35bfd",
             //// METADATA
             _safeCastToUint24(unzippedInitCodeSize),
             bytes32(unzippedInitCodeHash),

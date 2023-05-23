@@ -6,7 +6,7 @@ import "./ZExecution.sol";
 /// @dev Constants for self-extracting contracts.
 /// @author merklejerk (https://github.com/merklejerk)
 library ZRuntimeConstants {
-    uint256 internal constant FALLBACK_SIZE = 0x3D;
+    uint256 internal constant FALLBACK_SIZE = 0x37;
     uint256 internal constant METADATA_SIZE = 35;
     uint256 internal constant ZIPPED_DATA_OFFSET = FALLBACK_SIZE + METADATA_SIZE;
 }
