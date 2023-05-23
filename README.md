@@ -21,18 +21,19 @@ Most contracts can expect to see ~50% size/deployment cost reduction, and better
 
 
 ## Interacting with Zipped Contracts
-The self-extracting wrapper will perform the just-in-time decompression under the hood, so you can just directly call a function on the deployed zipped contract as if it were the unzipped contract. However, there are some things to be mindful of:
+The self-extracting wrapper will perform the just-in-time decompression under the hood, so you can usually directly call a function on the zipped contract as if it were the unzipped contract. However, there are some things to be mindful of:
 
 - Decompressing is a *very* expensive operation (upwards of 23M gas), so you should only call these contracts in the context of an `eth_call` where gas does not matter, i.e., not in a transaction that will be mined.
-- Off-chain helper and metadata contracts tend to have their functions writtens as read-only (`view` or `pure`). But since zipped contracts must be deployed just-in-time before the call can be made, top-level* calls from another contract into the zipped contract cannot be made from inside a `staticcall()` context. You should cast the contract's interface to one with non-static functions to prevent the compiler from implictly generating a `staticcall()` when making calls.
-- To emulate static guarantees, all zipped contracts will have their state changes undone by a revert on the top-level call. However, this only applies to the top-level call. Any calls beneath it that reenter the zipped contract can temporarily persist state, but will be undone when the top-level call returns.
 - Zipped contracts do not support `payable` functions.
+- Off-chain helper and metadata contracts tend to have their functions writtens as read-only (`view` or `pure`). But since zipped contracts must be deployed just-in-time before the call can be made, top-level calls from another contract into the zipped contract cannot be made from inside a `staticcall()` context. You should cast the contract's interface to one with non-static functions to prevent the compiler from implictly generating a `staticcall()` when making calls.
+- To emulate static guarantees of typical off-chain helper contracts, all zipped contracts will have their state changes undone by a revert on the top-level call. However, this only applies to the top-level call. Any calls beneath it that reenter the zipped contract can temporarily persist state, but will eventually be undone when the top-level call returns.
 - Zipped contracts cannot have their source/ABI verified on etherscan at the moment. If you want users to be able to interact with zipped contracts through etherscan, consider deploying a minimal contract with the same interface that forwards calls to the zipped version.
 
 ## ZCALL vs ZRUN Contracts
-There are two types of zipped contracts supported by the runtime. The simpler, and probably more popular, choice is ZCALL, which follows the flow described earlier. You don't have to do anything special to write ZCALL contracts; they just work. The ZCALL approach is designed to provide cheaper deployments.
+There are two types of zipped contracts supported by the runtime. The simpler, and probably more popular, choice is **ZCALL**, which follows the flow described earlier. The primary purpose of ZCALL contracts is to facilitate cheaper deployments. You usually don't have to do anything special to write ZCALL contracts; they often just work™.
 
-ZRUN contracts, on the other-hand, are designed to bypass maximum bytecode size constraints. There is a well-known ~24KB bytecode size limit for deployable contracts on Ethereum that many projects bump into. ZRUN contracts artificially extend this ceiling, but to accomplish this, your contract must be written very deliberately:
+**ZRUN** contracts, on the other-hand, are designed to bypass maximum bytecode size constraints. There is a well-known ~24KB bytecode size limit for deployable contracts on Ethereum that many projects bump into. ZRUN contracts artificially extend this ceiling, but to accomplish this, your contract must be written very deliberately:
+
     1. You must perform all your logic inside the constructor.
     2. You must manually ABI-encode and `return()` your return data in the constructor.
 
