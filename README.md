@@ -1,4 +1,4 @@
-# Zipped Contracts
+# ⛓ Zipped Contracts
 
 Compressed contracts that automatically self-extract when called. Useful for cheaply deploying contracts that are always called off-chain in an `eth_call` context. There are many examples of these contracts used in modern protocols/dapps: "lens"-type helper contracts, quoters, NFT metadata, query helpers, etc.
 
