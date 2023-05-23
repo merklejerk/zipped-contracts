@@ -34,8 +34,8 @@ There are two types of zipped contracts supported by the runtime. The simpler, a
 
 **ZRUN** contracts, on the other-hand, are designed to bypass maximum bytecode size constraints. There is a well-known ~24KB bytecode size limit for deployable contracts on Ethereum that many projects bump into. ZRUN contracts artificially extend this ceiling, but to accomplish this, your contract must be written very deliberately:
 
-    1. You must perform all your logic inside the constructor.
-    2. You must manually ABI-encode and `return()` your return data in the constructor.
+1. You must perform all your logic inside the constructor.
+2. You must manually ABI-encode and `return()` your return data in the constructor.
 
 This means ZRUN contracts only have one entry-point/function, which is their constructor. They also cannot support callbacks (directly) because they will never have code at their deployed address.
 
