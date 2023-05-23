@@ -12,7 +12,7 @@ All this witchcraft means that, from an `eth_call` context, interacting with a z
 ![architecture](./arch.drawio.png)
 
 ## Case Studies
-Most contracts can expect to see ~50% size/deployment cost reduction, and better for text-heavy applications. I applied this technology to some known off-chain contracts for comparison. No modifications were made to them.
+Most contracts can expect to see ~50% size/deployment cost reduction, and better for text-heavy applications. I applied this technology to some known off-chain contracts for comparison. No modifications were made to them and they still function as the original does.
 
 | contract | current bytecode size | zipped bytecode size | savings/reduction |
 |----------|-----------------------|----------------------|--------------------|
