@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.20;
 
-import "./DeployBase.sol";
+import "../DeployBase.sol";
 
 contract DeployRawZCall is DeployBase {
     function run() external {
