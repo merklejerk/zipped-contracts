@@ -23,6 +23,6 @@ contract ZipUtil is Script {
         args[1] = '--mime-type';
         args[2] = '-b';
         args[3] = path;
-        return keccak256(vm.ffi(args)) == keccak256(bytes('text/x-script.python'));
+        return keccak256(vm.ffi(args)) == keccak256(bytes(mimeType));
     }
 }

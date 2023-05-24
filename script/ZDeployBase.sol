@@ -6,34 +6,66 @@ import "forge-std/console.sol";
 import "src/LibZRuntime.sol";
 import "./ZipUtil.sol";
 
-contract DeployBase is Script, ZipUtil {
+contract ZDeployBase is Script, ZipUtil {
     function _zcallDeploy(bytes memory unzippedInitCode) internal returns (address deployed) {
-        deployed = LibZRuntime.deploySelfExtractingZCallInitCode(
-            _getZ(),
-            _zip(unzippedInitCode),
-            unzippedInitCode.length,
-            bytes8(keccak256(unzippedInitCode))
-        );
-        summarize(deployed, unzippedInitCode.length);
+        return _zcallDeploy(unzippedInitCode, Z(address(0)));
     }
-    
-    function _zrunDeploy(bytes memory unzippedInitCode) internal returns (address deployed) {
-        deployed = LibZRuntime.deploySelfExtractingZRunInitCode(
-            _getZ(),
+
+    function _zcallDeploy(bytes memory unzippedInitCode, Z z) internal returns (address deployed) {
+        deployed = LibZRuntime.deploySelfExtractingZCallInitCode(
+            _getValidExistingZ(z),
             _zip(unzippedInitCode),
             unzippedInitCode.length,
-            bytes8(keccak256(unzippedInitCode))
+            keccak256(unzippedInitCode)
         );
         summarize(deployed, unzippedInitCode.length);
     }
 
-    function _getZ() internal view returns (Z z) {
+    function _zrunDeploy(bytes memory unzippedInitCode) internal returns (address deployed) {
+        return _zrunDeploy(unzippedInitCode, Z(address(0)));
+    }
+    
+    function _zrunDeploy(bytes memory unzippedInitCode, Z z) internal returns (address deployed) {
+        deployed = LibZRuntime.deploySelfExtractingZRunInitCode(
+            _getValidExistingZ(z),
+            _zip(unzippedInitCode),
+            unzippedInitCode.length,
+            keccak256(unzippedInitCode)
+        );
+        summarize(deployed, unzippedInitCode.length);
+    }
+
+    function _getOrDeployZ() internal returns (Z z) {
+        z = _getExistingZ();
+        if (address(z) == address(0)) {
+            console.log(string(abi.encodePacked(
+                'No known Z runtime for current chain (',
+                vm.toString(block.chainid),
+                '). Deploying one...'
+            )));
+            z = new Z();
+            console.log('Deployed Z runtime to ', address(z));
+        }
+    }
+
+    function _getExistingZ() internal view returns (Z z) {
         if (block.chainid == 1) {
             z = Z(0x0000000000000000000000000000000000000000);
         } else if (block.chainid == 11155111) {
             z = Z(0x551F0E213dcb71f676558D8B0AB559d1cDD103F2);
-        } else {
+        } else if (block.chainid == 5) {
             z = Z(0x3198E681FB81462aeB42DD15b0C7BBe51D38750f);
+        }
+    }
+
+    function _getValidExistingZ(Z z_) private view returns (Z z) {
+        z = address(z_) == address(0) ? _getExistingZ() : z_;
+        if (address(z) == address(0)) {
+            revert(string(abi.encodePacked(
+                'No known Z runtime deployment for the current chain (',
+                vm.toString(block.chainid),
+                '). Pass it in explicitly.'
+            )));
         }
     }
 

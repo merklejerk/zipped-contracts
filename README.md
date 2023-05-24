@@ -4,6 +4,12 @@ Compressed contracts that automatically self-extract when called. Useful for che
 
 There is also a companion web app for deploying zipped contracts from your browser @ [bytecode.zip](https://bytecode.zip).
 
+## Installation (foundry)
+
+```bash
+$> forge install merklejerk/zipped-contracts
+```
+
 ## Overview
 Zipped contracts are essentially normal contracts that are compressed off-chain using [zlib DEFLATE](https://www.ietf.org/rfc/rfc1951.txt) then deployed on-chain inside of a self-extracting wrapper. Any call to the wrapper contract will trigger the wrapper's minimal fallback that forwards the call to the canonical `Z` runtime contract. The runtime contract decompresses the zipped contract, deploys it, then forwards the original call to the deployed instance. The result is bubbled up inside of a `revert()` payload to undo the deployment and avoid permanently modifying state.
 
@@ -40,7 +46,25 @@ There are two types of zipped contracts supported by the runtime. The simpler, a
 This means ZRUN contracts only have one entry-point/function, which is their constructor. They also cannot support callbacks (directly) because they will never have code at their deployed address.
 
 ## Deploying Zipped Contracts
-There are foundry [scripts](./script/) included in this repo that you can use to deploy your contracts as self-extracting zipped contracts (or you can use [bytecode.zip](https://bytecode.zip)).
+There are foundry [scripts](./script/) and [examples](./script/sample) included in this repo that you can use to deploy your contracts as self-extracting zipped contracts (or you can use [bytecode.zip](https://bytecode.zip)).
+
+If you add this repo as a foundry dependency (`forge install zipped-contracts`), you can inherit from `ZDeployBase` in your deploy script and let it handle deployment like so:
+
+```solidity
+import "zipped-contracts/script/ZDeployBase.sol";
+import "src/MyContract.sol";
+
+contract Deploy is ZDeployBase {
+    Z z = _getOrDeployZ();
+    vm.startBroadcast();
+    // Deploy as a ZCALL contract:
+    _zcallDeploy(type(MyContract).creationCode);
+    // or deploy as a ZRUN contract:
+    _zrunDeploy(type(MyContract).creationCode);
+}
+```
+
+Note that the scripts in this repo require the `ffi=true` option in your `foundry.toml` and a `python3` to be accessible via `env`.
 
 ## Writing ZCALL Contracts
 
@@ -70,6 +94,32 @@ ZRUN contracts only have a single entry point and must be specially crafted to p
 ## `Z` Runtime Deployed Addresses
 This is the canonical runtime for zipped contracts, which handles decompression, execution, and cleanup.
 You probably won't need to interact with this contract directly if you're using the self-extracting wrapper.
+
+## Callbacks and Reentrancy
+ZRUN contracts cannot reenter or utilize callbacks because they run entirely inside of a constructor.
+
+## ZRUN Example
+Your ZRUN contract should explicitly `return()` its abi-encoded result in its constructor. You can call your own `internal`/`public` functions, but not `external` functions. From outside, calling *any* function on a zipped ZRUN contract will result in only the constructor being called.
+
+```solidity
+contract AddTwoNumbers {
+    constructor(uint256 a, uint256 b) {
+        uint256 c = a + b;
+        bytes memory result = abi.encode(c);
+        assembly { return(add(result, 0x20), mload(result)) }
+    }
+
+    // Dummy function to trigger the constructor. The body and name of this function does
+    // not matter.
+    function exec(uint256 a, uint256 b) external returns (uint256) {}
+}
+
+// ...
+// Deploy and call the ZRUN contract.
+// Prints "1337"
+console.log(AddTwoNumbers(_zrunDeploy(type(AddTwoNumbers).creationCode)).exec(1300, 37));
+```
+
 
 | network | address |
 |---------|---------|
