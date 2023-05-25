@@ -84,6 +84,9 @@ address caller = Z.isZippedContract(msg.sender, address(this))
 ### Callbacks and Reentrancy
 You can reenter your unzipped contract either directly, via `this.xxx()`, or indirectly through the zipped contract's forwarder `ZIPPED_CONTRACT.xxx()`. But bear in mind the meaning of `msg.sender` in the latter case, as described previously.
 
+### Delegatecalls
+Yup, you can `delegatecall()` into a zipped contract and it will (eventually) delegatecall into the unzipped logic. ☺️
+
 ## Writing ZRUN Contracts
 
 ZRUN contracts only have a single entry point and must be specially crafted to perform all their logic and explicitly return its result in its constructor. This can soften deployment bytecode size limits because only the result of the computation (not code) is deposited at the deployment address. The zipped version of your logic must still fit within the maximum deployment size, however.
@@ -91,17 +94,14 @@ ZRUN contracts only have a single entry point and must be specially crafted to p
 ### Addresses
 `address(this)` will always be the deterministic, temporary deployment address of your unzipped contract, which is different from the zipped contract address. `msg.sender` will always be the zipped contract. You can recover the original caller of the zipped contract by decoding the last 32 bytes of your contract's initcode (accessible via `codecopy()` in assembly).
 
-## `Z` Runtime Deployed Addresses
+### `Z` Runtime Deployed Addresses
 This is the canonical runtime for zipped contracts, which handles decompression, execution, and cleanup.
 You probably won't need to interact with this contract directly if you're using the self-extracting wrapper.
 
-## Callbacks and Reentrancy
+### Callbacks and Reentrancy
 ZRUN contracts cannot reenter or utilize callbacks because they run entirely inside of a constructor.
 
-## Delegatecalls
-Yes, you can delegatecall into a zipped contract and it will (eventually) delegatecall into the unzipped logic. ☺️
-
-## ZRUN Example
+### ZRUN Example
 Your ZRUN contract should explicitly `return()` its abi-encoded result in its constructor. You can call your own `internal`/`public` functions, but not `external` functions. From outside, calling *any* function on a zipped ZRUN contract will result in only the constructor being called.
 
 ```solidity
