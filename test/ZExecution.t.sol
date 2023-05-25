@@ -12,6 +12,7 @@ contract ZExecutionTest is ZExecution, ZipUtil, Test {
     using LibContractStorage for address;
 
     ZCallTestContract zcallZipped;
+    ZDelegateCaller zcallDelegatecaller;
     uint256 zcallUnzippedSize;
     bytes32 zcallUnzippedHash;
     ZRunTestContract zrunZipped;
@@ -31,6 +32,12 @@ contract ZExecutionTest is ZExecution, ZipUtil, Test {
                 zcallUnzippedSize,
                 zcallUnzippedHash
             )));
+            zcallDelegatecaller = new ZDelegateCaller(
+                ZExecution(address(this)),
+                ZExecution.zcallWithRawResult.selector,
+                zcallUnzippedSize,
+                zcallUnzippedHash
+            );
         }
         {
             bytes memory creationCode = type(ZRunTestContract).creationCode;
@@ -69,6 +76,19 @@ contract ZExecutionTest is ZExecution, ZipUtil, Test {
         IStaticTestContracts(address(zcallZipped)).conditionalFailure(1234);
     }
 
+    function test_zcall_directCall() external {
+        vm.expectRevert(OnlyDelegateCallError.selector);
+        vm.prank(address(zcallZipped));
+        this.zcallWithRawResult(
+            address(zcallZipped),
+            0,
+            0,
+            0,
+            0,
+            ""
+        );
+    }
+
     function test_zcall_reenter() external {
         assertEq(zcallZipped.reenter(2), 2);
     }
@@ -84,6 +104,12 @@ contract ZExecutionTest is ZExecution, ZipUtil, Test {
         assertEq(h1, keccak256(hashPayload1));
         bytes32 h2 = zcallZipped.hash(hashPayload2);
         assertEq(h2, keccak256(hashPayload2));
+    }
+
+    function test_zcall_delegatecall_result() external {
+        bytes memory hashPayload = bytes("hello, world!");
+        bytes32 h = zcallDelegatecaller.hashWithSelf(zcallZipped, hashPayload);
+        assertEq(h, keccak256(abi.encode(address(zcallDelegatecaller), hashPayload)));
     }
 
     function test_zrun_result() external {
@@ -110,6 +136,19 @@ contract ZExecutionTest is ZExecution, ZipUtil, Test {
         vm.expectRevert(StaticContextError.selector);
         IStaticTestContracts(address(zrunZipped)).run(1234, payload);
     }
+
+    function test_zrun_directCall() external {
+        vm.expectRevert(OnlyDelegateCallError.selector);
+        vm.prank(address(zrunZipped));
+        this.zrunWithRawResult(
+            address(zrunZipped),
+            0,
+            0,
+            0,
+            0,
+            ""
+        );
+    }
 }
 
 contract ZippedStorage {
@@ -127,15 +166,35 @@ contract ZippedFallback is ZippedStorage {
     }
 
     fallback(bytes calldata callData) external returns (bytes memory r) {
+        address zipped;
+        assembly {
+            codecopy(0x00, sub(codesize(), 0x20), 0x20)
+            zipped := mload(0x00)
+        }
         bool b;
-        (b, r) = address(_z).delegatecall(abi.encodeWithSelector(
-            _runSelector,
-            _dataOffset,
-            address(this).code.length - _dataOffset,
-            _unzippedSize,
-            _unzippedHash,
-            callData
-        ));
+        if (_runSelector == ZExecution.zcallWithRawResult.selector) {
+            (b, r) = address(_z).delegatecall(abi.encodeCall(
+                ZExecution.zcallWithRawResult, (
+                    zipped,
+                    _dataOffset,
+                    zipped.code.length - _dataOffset - 32,
+                    _unzippedSize,
+                    _unzippedHash,
+                    callData
+                )
+            ));
+        } else {
+            (b, r) = address(_z).delegatecall(abi.encodeCall(
+                ZExecution.zrunWithRawResult, (
+                    zipped,
+                    _dataOffset,
+                    zipped.code.length - _dataOffset - 32,
+                    _unzippedSize,
+                    _unzippedHash,
+                    callData
+                )
+            ));
+        }
         if (!b) {
             assembly { revert(add(r, 0x20), mload(r)) }
         }
@@ -157,9 +216,42 @@ contract ZippedContainer is ZippedStorage {
         _unzippedHash = unzippedHash;
         bytes memory runtime = abi.encodePacked(
             type(ZippedFallback).runtimeCode,
-            initCode
+            initCode,
+            // Store the zipped address in code to detect delegatecalls.
+            uint256(uint160(address(this)))
         );
-       assembly { return(add(runtime, 0x20), mload(runtime)) } 
+        assembly {
+            return(add(runtime, 0x20), mload(runtime))
+        } 
+    }
+}
+
+contract ZDelegateCaller is ZippedStorage {
+    constructor(
+        ZExecution z,
+        bytes4 runSelector,
+        uint256 unzippedSize,
+        bytes32 unzippedHash
+    ) {
+        _z = z;
+        _runSelector = runSelector;
+        _dataOffset = type(ZippedFallback).runtimeCode.length;
+        _unzippedSize = unzippedSize;
+        _unzippedHash = unzippedHash;
+    }
+
+    function hashWithSelf(ZCallTestContract zipped, bytes memory data)
+        external
+        returns (bytes32)
+    {
+        (bool s, bytes memory r) = address(zipped).delegatecall(abi.encodeCall(
+            ZCallTestContract.hashWithSelf,
+            (data)
+        ));
+        require(s);
+        assembly {
+            return(add(r, 0x20), mload(r))
+        }
     }
 }
 
@@ -170,6 +262,7 @@ interface IStaticTestContracts {
 }
 
 contract ZCallTestContract {
+    
     function hash(bytes memory data) external returns (bytes32) {
         return keccak256(data);
     }
@@ -190,6 +283,10 @@ contract ZCallTestContract {
             return ZCallTestContract(msg.sender).reenterIndirect(n - 1) + 1;
         }
         return 0;
+    }
+
+    function hashWithSelf(bytes memory data) external returns (bytes32) {
+        return keccak256(abi.encode(address(this), data));
     }
 }
 

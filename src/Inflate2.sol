@@ -4,8 +4,8 @@ pragma solidity ^0.8.20;
 /// @notice Solidity implementation of zlib deflate.
 /// @dev Optimistic form of:
 ///      https://github.com/adlerjohn/inflate-sol/blob/2a88141f5226da9d0252be4a456a2e0b23ba3d0e/contracts/InflateLib.sol
-/// @author @adlerjohn (https://github.com/adlerjohn) (original)
-/// @author @merklejerk (https://github.com/merklejerk) (this version)
+/// @author Zipped Contracts (https://github.com/merklejerk/zipped-contracts)
+/// @author @adlerjohn (https://github.com/adlerjohn/inflate-sol) (original)
 contract Inflate2 {
     // Maximum bits in a code
     uint256 constant MAXBITS = 15;
@@ -264,7 +264,7 @@ contract Inflate2 {
                 bytes memory output = s.output;
                 uint256 outcnt = s.outcnt;
                 s.outcnt += len;
-                assembly("memory-safe") {
+                assembly ("memory-safe") {
                     let dst := add(output, add(0x20, outcnt))
                     switch gt(len, dist)
                         case 1 {
@@ -414,7 +414,7 @@ contract Inflate2 {
                     symbol = 11 + tempBits;
                 }
 
-                assembly("memory-safe") {
+                assembly ("memory-safe") {
                     let p := add(lengths, add(0x20, mul(index, 0x20)))
                     index := add(index, symbol)
                     for {} iszero(iszero(symbol)) {} {
@@ -516,7 +516,7 @@ contract Inflate2 {
         returns (bytes memory)
     {
         bytes memory data = new bytes(dataSize);
-        assembly("memory-safe") {
+        assembly ("memory-safe") {
             extcodecopy(dataAddr, add(data, 0x20), dataOffset, dataSize)
         }
         return this.inflate(data, outputSize);

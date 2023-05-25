@@ -5,7 +5,7 @@ import "./Inflate2.sol";
 import "./ZBase.sol";
 
 /// @dev Execution functions for zipped contracts.
-/// @author merklejerk (https://github.com/merklejerk)
+/// @author Zipped Contracts (https://github.com/merklejerk/zipped-contracts)
 contract ZExecution is Inflate2, ZBase {
     error OnlyDelegateCallError();
     error CreationFailedError();
@@ -45,32 +45,36 @@ contract ZExecution is Inflate2, ZBase {
     ///      All changes will be revert()ed to prevent permanently modifying state.
     ///      Performs a raw return of the result, as if the function was called directly.
     ///      Must be called via a delegatecall from the context of the zipped contract.
+    /// @param zipped The address holding the zipped data. If different from address(this)
+    ///               then a delegatecall() instead of a call() will be performed on
+    ///               the unzipped contract.
     /// @param dataOffset The offset into `zipped`'s bytecode to start reading zipped data.
     /// @param dataSize The size of the zipped data.
     /// @param unzippedSize The size of the unzipped initcode.
     /// @param unzippedHash The hash of the unzipped initcode.
     /// @param callData ABI-encoded function call to make against the unzipped (and deployed) contract.
     function zcallWithRawResult(
+        address zipped,
         uint256 dataOffset,
         uint256 dataSize,
         uint256 unzippedSize,
         bytes32 unzippedHash,
         bytes calldata callData
     )
-        external
+        public
+        onlyDelegateCall
         // Naked result of the call is returned.
     {
         bytes memory initCode;
         address unzipped = _computeZCallDeployAddress(address(this), unzippedHash);
+        bool shouldDelegateCall = address(this) != zipped;
         // Allow the original msg.sender to be recovered by the unzipped contract by
         // appending it to the calldata.
         bytes memory callDataWithSender = abi.encodePacked(callData, uint256(uint160(msg.sender)));
         if (unzipped.code.length == 0) {
             //  Unzip initcode.
             initCode = _inflateAndCheck(
-                // Because we are inside of a zipped contract delegatecall,
-                // address(this) holds the zip data.
-                address(this),
+                zipped,
                 dataOffset,
                 dataSize,
                 unzippedSize,
@@ -79,14 +83,16 @@ contract ZExecution is Inflate2, ZBase {
             // Deploy and call without (permanently) altering state.
             (bool b, bytes memory r) = _IMPL.delegatecall(abi.encodeCall(
                 this.__execZCall,
-                (unzipped, initCode, callDataWithSender)
+                (unzipped, shouldDelegateCall, initCode, callDataWithSender)
             ));
             assert(!b);
             _handleExecRevert(r); // Terminates.
         } else {
             // The contract was already unzipped and deployed earlier in the call stack.
             // We can just call it directly and let the top level zcall do the clean up.
-            (bool b, bytes memory r) = unzipped.call(callData);
+            (bool b, bytes memory r) = shouldDelegateCall
+                ? unzipped.delegatecall(callData)
+                : unzipped.call(callData);
             if (!b) {
                 assembly { revert(add(r, 0x20), mload(r)) }
             }
@@ -96,11 +102,11 @@ contract ZExecution is Inflate2, ZBase {
 
     function __execZCall(
         address unzipped,
+        bool shouldDelegateCall,
         bytes memory initCode,
         bytes memory callData
     )
         external
-        onlyDelegateCall
         noStaticContext
     {
         if (unzipped.code.length == 0) {
@@ -116,7 +122,9 @@ contract ZExecution is Inflate2, ZBase {
                 revert CreationFailedError();
             }
         }
-        (bool b, bytes memory r) = unzipped.call(callData);
+        (bool b, bytes memory r) = shouldDelegateCall
+            ? unzipped.delegatecall(callData)
+            : unzipped.call(callData);
         uint256 len = r.length;
         bytes4 selector = b ? ZSuccess.selector : ZFail.selector;
         assembly {
@@ -131,6 +139,7 @@ contract ZExecution is Inflate2, ZBase {
     ///      All changes will be revert()ed to prevent permanently modifying state.
     ///      Performs a raw return of the result, as if the function was called directly.
     ///      Must be called via a delegatecall from the context of the zipped contract.
+    /// @param zipped The address holding the zipped data.
     /// @param dataOffset The offset into `zipped`'s bytecode to start reading zipped data.
     /// @param dataSize The size of the zipped data.
     /// @param unzippedSize The size of the unzipped initcode.
@@ -138,20 +147,20 @@ contract ZExecution is Inflate2, ZBase {
     /// @param initArgs ABI-encoded call data to pass to unzipped initcode during deployment.
     ///                 Function selector should be included but will be stripped.
     function zrunWithRawResult(
+        address zipped,
         uint256 dataOffset,
         uint256 dataSize,
         uint256 unzippedSize,
         bytes32 unzippedHash,
         bytes calldata initArgs
     )
-        external
+        public
+        onlyDelegateCall
         // Naked runtime code is returned.
     {
         //  Unzip initcode.
         bytes memory initCode = _inflateAndCheck(
-            // Because we are inside of a zipped contract delegatecall,
-            // address(this) holds the zip data.
-            address(this),
+            zipped,
             dataOffset,
             dataSize,
             unzippedSize,
@@ -174,7 +183,6 @@ contract ZExecution is Inflate2, ZBase {
         bytes calldata initArgs
     )
         external
-        onlyDelegateCall
         noStaticContext
     {
         address unzipped;
@@ -234,7 +242,7 @@ contract ZExecution is Inflate2, ZBase {
     function _handleExecRevert(bytes memory r) private pure {
         if (r.length >= 4) {
             bytes4 selector;
-            assembly("memory-safe") { selector := mload(add(r, 0x20)) }
+            assembly ("memory-safe") { selector := mload(add(r, 0x20)) }
             if (selector == ZFail.selector) {
                 assembly("memory-safe") {
                     revert(add(r, 0x24), sub(mload(r), 0x04))
@@ -245,7 +253,7 @@ contract ZExecution is Inflate2, ZBase {
                 }
             }
         }
-        assembly("memory-safe") {
+        assembly ("memory-safe") {
             revert(add(r, 0x20), mload(r))
         }
     }

@@ -98,6 +98,9 @@ You probably won't need to interact with this contract directly if you're using 
 ## Callbacks and Reentrancy
 ZRUN contracts cannot reenter or utilize callbacks because they run entirely inside of a constructor.
 
+## Delegatecalls
+Yes, you can delegatecall into a zipped contract and it will (eventually) delegatecall into the unzipped logic. ☺️
+
 ## ZRUN Example
 Your ZRUN contract should explicitly `return()` its abi-encoded result in its constructor. You can call your own `internal`/`public` functions, but not `external` functions. From outside, calling *any* function on a zipped ZRUN contract will result in only the constructor being called.
 

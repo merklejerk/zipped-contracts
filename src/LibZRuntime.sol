@@ -5,7 +5,7 @@ import "./Z.sol";
 
 /// @notice Utility for generating deployable initcode for self-extracting contracts.
 /// @dev Not meant to be deployed.
-/// @author merklejerk (https://github.com/merklejerk)
+/// @author Zipped Contracts (https://github.com/merklejerk/zipped-contracts)
 library LibZRuntime {
     error SafeCastError();
 
@@ -173,6 +173,7 @@ library LibZRuntime {
         /**********************************************************************
             Runtime for a self-extracting contract will be:
                 FALLBACK():
+                    // Build calldata
                     RETURNDATASIZE
                     PUSH1 0x00 // fallback selector (both fallbacks have 1-significant-byte selectors)
                     RETURNDATASIZE
@@ -181,6 +182,10 @@ library LibZRuntime {
                     RETURNDATASIZE
                     MSIZE
                     CALLDATACOPY
+                    PUSH20 0x0000000000000000000000000000000000000000 // deployed address
+                    MSIZE
+                    MSTORE
+                    // Make call
                     RETURNDATASIZE
                     RETURNDATASIZE
                     PUSH1 28
@@ -201,10 +206,10 @@ library LibZRuntime {
                     // Return or revert
                     SWAP2
                     ISZERO
-                    PUSH2 0x35
+                    PUSH2 0x4c
                     JUMPI
                     RETURN
-                    JUMPDEST // :0x35
+                    JUMPDEST // :0x4c
                     REVERT
                 METADATA:
                     uint24(unzippedInitCodeSize)
@@ -217,9 +222,11 @@ library LibZRuntime {
             //// FALLBACK()
             hex"3d60",
             uint8(uint32(fallbackSelector)),
-            hex"3d52363d59373d3d601c8059039073",
+            hex"3d52363d593773",
+            address(0), // To be filled in by RuntimeDeployer constructor
+            hex"59523d3d601c8059039073",
             address(z),
-            hex"5af4813d3d82803e911561003557f35bfd",
+            hex"5af4813d3d82803e911561004c57f35bfd",
             //// METADATA
             _safeCastToUint24(unzippedInitCodeSize),
             bytes32(unzippedInitCodeHash),
@@ -237,11 +244,18 @@ library LibZRuntime {
     }
 }
 
-/// @notice Deploys the data passed into its constructor.
-/// @author merklejerk (https://github.com/merklejerk)
+/// @notice Deploys the a zipped contract.
+/// @author Zipped Contracts (https://github.com/merklejerk/zipped-contracts)
 contract RuntimeDeployer {
     constructor(bytes memory runtimeCode) {
-        assembly("memory-safe") { return(add(runtimeCode, 0x20), mload(runtimeCode)) }
+        assembly ("memory-safe") {
+            // Overwrite deployed address.
+            {
+                let p := add(runtimeCode, 0x2A)
+                mstore(p, or(and(mload(p), 0xffffffffffffffffffffffff), shl(96, address())))
+            }
+            return(add(runtimeCode, 0x20), mload(runtimeCode))
+        }
     }
 }
 

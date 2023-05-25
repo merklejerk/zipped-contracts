@@ -115,6 +115,16 @@ contract ZRuntimeTest is Z, ZipUtil, Test {
         zipped.conditionalFailure{value: 1}(1234);
     }
 
+    function test_zcall_delegatecall() external {
+        bytes memory hashPayload = bytes("hello, world!");
+        ZCallTestContract zipped = ZCallTestContract(
+            this.deploySelfExtractingZCallInitCode(zcallZippedInitCode, zcallUnzippedSize, zcallUnzippedHash)
+        );
+        address delegatecaller = address(new DelegateCaller(address(zipped)));
+        bytes32 h = ZCallTestContract(delegatecaller).hashWithSelf(hashPayload);
+        assertEq(h, keccak256(abi.encode(delegatecaller, hashPayload)));
+    }
+
     function test_zrun_result() external {
         bytes memory payload = bytes("hello, world!");
         ZRunTestContract zipped = ZRunTestContract(
@@ -195,6 +205,10 @@ contract ZCallTestContract {
         }
         return msg.sender;
     }
+
+    function hashWithSelf(bytes memory data) external returns (bytes32) {
+        return keccak256(abi.encode(address(this), data));
+    }
 }
 
 contract ZRunTestContract {
@@ -206,5 +220,25 @@ contract ZRunTestContract {
     function run(uint256 x, bytes memory data) public payable returns (bytes memory) {
         require(x != 1337, 'woops');
         return data;
+    }
+}
+
+contract DelegateCaller {
+    address immutable target;
+    constructor(address target_) {
+        target = target_;
+    }
+
+    fallback() external {
+        bytes memory callData = msg.data;
+        address target_ = target;
+        assembly {
+            let s := delegatecall(gas(), target_, add(callData, 0x20), mload(callData), 0x00, 0x00)
+            returndatacopy(0x00, 0x00, returndatasize())
+            if iszero(s) {
+                revert(0x00, returndatasize())
+            }
+            return(0x00, returndatasize())
+        }
     }
 }

@@ -6,9 +6,8 @@ import "./ZRuntimeConstants.sol";
 import "./ZBase.sol";
 
 /// @dev Fallback handlers for Self-extracting zipped contracts.
-/// @author merklejerk (https://github.com/merklejerk)
+/// @author Zipped Contracts (https://github.com/merklejerk/zipped-contracts)
 contract ZFallback is ZExecution {
-
     /// @dev The fallback handler for a self-extracting zcall contract.
     ///      The self-extracting zcall contract always delegatecalls this function when it receives
     ///      any call.
@@ -38,23 +37,33 @@ contract ZFallback is ZExecution {
     function _handleSelfExtractingFallback(bytes4 execSelector) private {
         uint256 ZIPPED_DATA_OFFSET = ZRuntimeConstants.ZIPPED_DATA_OFFSET;
 
-        uint256 zippedDataSize = address(this).code.length - ZIPPED_DATA_OFFSET;
-        (uint24 unzippedSize, bytes32 unzippedHash) = _readMetadata(address(this));
+        // The zipped contract handler will append its deployed address to the calldata.
+        address zipped = abi.decode(msg.data[msg.data.length - 32:], (address));
+        // The original calldata for zipped contract call is appended right
+        // after ours.
+        bytes calldata origCallData = msg.data[4:msg.data.length-32];
+        uint256 zippedDataSize = zipped.code.length - ZIPPED_DATA_OFFSET;
+        (uint24 unzippedSize, bytes32 unzippedHash) = _readMetadata(zipped);
         // Call the zip execute function.
-        (bool b, bytes memory r) = _IMPL.delegatecall(abi.encodeWithSelector(execSelector,
-            ZIPPED_DATA_OFFSET,
-            zippedDataSize,
-            unzippedSize,
-            unzippedHash,
-            // The original calldata for zipped contract call is appended right
-            // after ours.
-            msg.data[4:]
-        ));
-        // Bubble up result.
-        if (!b) {
-            assembly { revert(add(r, 0x20), mload(r)) }
+        if (execSelector == ZExecution.zcallWithRawResult.selector) {
+            zcallWithRawResult(
+                zipped,
+                ZIPPED_DATA_OFFSET,
+                zippedDataSize,
+                unzippedSize,
+                unzippedHash,
+                origCallData
+            );
+        } else { // ZExecution.zrunWithRawResult.selector
+            zrunWithRawResult(
+                zipped,
+                ZIPPED_DATA_OFFSET,
+                zippedDataSize,
+                unzippedSize,
+                unzippedHash,
+                origCallData
+            );
         }
-        assembly { return(add(r, 0x20), mload(r)) }
     }
 
     function _readMetadata(address zipped)
@@ -64,7 +73,7 @@ contract ZFallback is ZExecution {
         uint256 FALLBACK_SIZE = ZRuntimeConstants.FALLBACK_SIZE;
         uint256 METADATA_SIZE = ZRuntimeConstants.METADATA_SIZE;
         // Read metadata from zipped contract's bytecode.
-        assembly("memory-safe") {
+        assembly ("memory-safe") {
             let p := mload(0x40)
             // Metadata comes right after the fallback.
             extcodecopy(zipped, p, FALLBACK_SIZE, METADATA_SIZE)
