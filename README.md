@@ -127,8 +127,8 @@ console.log(AddTwoNumbers(_zrunDeploy(type(AddTwoNumbers).creationCode)).exec(13
 | network | address |
 |---------|---------|
 | Ethereum mainnet | ??? |
-| Goerli           | [`0x3198E681FB81462aeB42DD15b0C7BBe51D38750f`](https://etherscan.io/address/0x3198E681FB81462aeB42DD15b0C7BBe51D38750f) |
-| Sepolia          | [`0x551F0E213dcb71f676558D8B0AB559d1cDD103F2`](https://etherscan.io/address/0x551F0E213dcb71f676558D8B0AB559d1cDD103F2) |
+| Goerli           | [`0x57173bcb40711d8ee0c3B6139dd83C6E61CaD4c1`](https://goerli.etherscan.io/address/0x57173bcb40711d8ee0c3B6139dd83C6E61CaD4c1) |
+| Sepolia          | [`0xc7d997A51e27d7EB71CC0DCcD357068bB9B89320`](https://sepolia.etherscan.io/address/0xc7d997A51e27d7EB71CC0DCcD357068bB9B89320) |
 
 ## Project Setup and Test
 
