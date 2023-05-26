@@ -37,9 +37,9 @@ contract ZDeployBase is Script, ZipUtil {
 
     function _getOrDeployZ() internal returns (Z z) {
         z = _getExistingZ();
-        if (address(z) == address(0)) {
+        if (address(z) == address(0) || address(z).code.length == 0) {
             console.log(string(abi.encodePacked(
-                'No known Z runtime for current chain (',
+                'No available Z runtime for current chain (',
                 vm.toString(block.chainid),
                 '). Deploying one...'
             )));
@@ -52,9 +52,9 @@ contract ZDeployBase is Script, ZipUtil {
         if (block.chainid == 1) {
             z = Z(0x0000000000000000000000000000000000000000);
         } else if (block.chainid == 11155111) {
-            z = Z(0xc7d997A51e27d7EB71CC0DCcD357068bB9B89320);
+            z = Z(0xcA64D4225804F2Ae069760CB5fF2F1D8BaC1C2f9);
         } else if (block.chainid == 5) {
-            z = Z(0x57173bcb40711d8ee0c3B6139dd83C6E61CaD4c1);
+            z = Z(0xcA64D4225804F2Ae069760CB5fF2F1D8BaC1C2f9);
         }
     }
 
