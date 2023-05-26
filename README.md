@@ -2,8 +2,6 @@
 
 Compressed contracts that automatically self-extract when called. Useful for cheaply deploying contracts that are always called off-chain in an `eth_call` context. There are many examples of these contracts used in modern protocols/dapps: "lens"-type helper contracts, quoters, NFT metadata, query helpers, etc.
 
-There is also a companion web app for deploying zipped contracts from your browser @ [bytecode.zip](https://bytecode.zip).
-
 ## Installation (foundry)
 
 ```bash
@@ -46,7 +44,7 @@ There are two types of zipped contracts supported by the runtime. The simpler, a
 This means ZRUN contracts only have one entry-point/function, which is their constructor. They also cannot support callbacks (directly) because they will never have code at their deployed address.
 
 ## Deploying Zipped Contracts
-There are foundry [scripts](./script/) and [examples](./script/sample) included in this repo that you can use to deploy your contracts as self-extracting zipped contracts (or you can use [bytecode.zip](https://bytecode.zip)).
+There are foundry [scripts](./script/) and [examples](./script/sample) included in this repo that you can use to deploy your contracts as self-extracting zipped contracts.
 
 If you add this repo as a foundry dependency (`forge install zipped-contracts`), you can inherit from `ZDeployBase` in your deploy script and let it handle deployment like so:
 
@@ -139,3 +137,6 @@ $> git clone git@github.com:merklejerk/zipped-contracts.git && cd zipped-contrac
 $> forge install
 $> forge test -vvv
 ```
+
+## Kudos
+Thanks to [@adlerjohn](https://github.com/adlerjohn) for [inflate-sol](https://github.com/adlerjohn/inflate-sol), which is the basis for the decompression used here.
