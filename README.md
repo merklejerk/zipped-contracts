@@ -56,9 +56,9 @@ contract Deploy is ZDeployBase {
     Z z = _getOrDeployZ();
     vm.startBroadcast();
     // Deploy as a ZCALL contract:
-    _zcallDeploy(type(MyContract).creationCode);
+    _zcallDeploy(type(MyContract).creationCode, z);
     // or deploy as a ZRUN contract:
-    _zrunDeploy(type(MyContract).creationCode);
+    _zrunDeploy(type(MyContract).creationCode, z);
 }
 ```
 
