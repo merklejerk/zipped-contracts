@@ -91,8 +91,8 @@ contract ZExecution is Inflate2, ZBase {
             // The contract was already unzipped and deployed earlier in the call stack.
             // We can just call it directly and let the top level zcall do the clean up.
             (bool b, bytes memory r) = shouldDelegateCall
-                ? unzipped.delegatecall(callData)
-                : unzipped.call(callData);
+                ? unzipped.delegatecall(callDataWithSender)
+                : unzipped.call(callDataWithSender);
             if (!b) {
                 assembly { revert(add(r, 0x20), mload(r)) }
             }
