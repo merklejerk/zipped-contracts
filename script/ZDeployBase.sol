@@ -52,9 +52,9 @@ contract ZDeployBase is Script, ZipUtil {
         if (block.chainid == 1) {
             z = Z(0x0000000000000000000000000000000000000000);
         } else if (block.chainid == 11155111) {
-            z = Z(0x551F0E213dcb71f676558D8B0AB559d1cDD103F2);
+            z = Z(0xc7d997A51e27d7EB71CC0DCcD357068bB9B89320);
         } else if (block.chainid == 5) {
-            z = Z(0x3198E681FB81462aeB42DD15b0C7BBe51D38750f);
+            z = Z(0x57173bcb40711d8ee0c3B6139dd83C6E61CaD4c1);
         }
     }
 
