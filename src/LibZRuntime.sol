@@ -244,7 +244,7 @@ library LibZRuntime {
     }
 }
 
-/// @notice Deploys the a zipped contract.
+/// @notice Deploys a zipped contract.
 /// @author Zipped Contracts (https://github.com/merklejerk/zipped-contracts)
 contract RuntimeDeployer {
     constructor(bytes memory runtimeCode) {
