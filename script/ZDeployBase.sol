@@ -75,7 +75,7 @@ contract ZDeployBase is Script, ZipUtil {
             vm.toString(deployed),
             ', Size: ', vm.toString(deployed.code.length),
             ', Unzipped size: ', vm.toString(unzippedSize),
-            ', Compression: ', string(abi.encodePacked(vm.toString(100 - deployed.code.length * 100 / unzippedSize), '%'))
+            ', Compression: ', string(abi.encodePacked(vm.toString(100 - int256(deployed.code.length * 100 / unzippedSize)), '%'))
         )));
     }
 }
