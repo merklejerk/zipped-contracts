@@ -53,12 +53,14 @@ import "zipped-contracts/script/ZDeployBase.sol";
 import "src/MyContract.sol";
 
 contract Deploy is ZDeployBase {
-    Z z = _getOrDeployZ();
-    vm.startBroadcast();
-    // Deploy as a ZCALL contract:
-    _zcallDeploy(type(MyContract).creationCode, z);
-    // or deploy as a ZRUN contract:
-    _zrunDeploy(type(MyContract).creationCode, z);
+    function run() external {
+        Z z = _getOrDeployZ();
+        vm.startBroadcast();
+        // Deploy as a ZCALL contract:
+        _zcallDeploy(type(MyContract).creationCode, z);
+        // or deploy as a ZRUN contract:
+        _zrunDeploy(type(MyContract).creationCode, z);
+    }
 }
 ```
 
@@ -121,10 +123,12 @@ contract AddTwoNumbers {
 console.log(AddTwoNumbers(_zrunDeploy(type(AddTwoNumbers).creationCode)).exec(1300, 37));
 ```
 
+## Deployed Addresses
+These are the canonical runtime deployments. These will change with each subsequent release. Contracts deployed under older runtimes should continue to function without. You should try to interact only with the version your contract was deployed with.
 
 | network | address |
 |---------|---------|
-| Ethereum mainnet | ??? |
+| Ethereum mainnet | [`0xf1EeADEba1E05578d0e08635Fc7356aeDBEB33d1`](https://etherscan.io/address/0xf1EeADEba1E05578d0e08635Fc7356aeDBEB33d1) |
 | Goerli           | [`0xcA64D4225804F2Ae069760CB5fF2F1D8BaC1C2f9`](https://goerli.etherscan.io/address/0xcA64D4225804F2Ae069760CB5fF2F1D8BaC1C2f9) |
 | Sepolia          | [`0xcA64D4225804F2Ae069760CB5fF2F1D8BaC1C2f9`](https://sepolia.etherscan.io/address/0xcA64D4225804F2Ae069760CB5fF2F1D8BaC1C2f9) |
 

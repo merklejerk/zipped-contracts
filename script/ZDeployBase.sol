@@ -50,7 +50,7 @@ contract ZDeployBase is Script, ZipUtil {
 
     function _getExistingZ() internal view returns (Z z) {
         if (block.chainid == 1) {
-            z = Z(0x0000000000000000000000000000000000000000);
+            z = Z(0xf1EeADEba1E05578d0e08635Fc7356aeDBEB33d1);
         } else if (block.chainid == 11155111) {
             z = Z(0xcA64D4225804F2Ae069760CB5fF2F1D8BaC1C2f9);
         } else if (block.chainid == 5) {
