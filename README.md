@@ -2,6 +2,8 @@
 
 Compressed contracts that automatically self-extract when called. Useful for cheaply deploying contracts that are always called off-chain in an `eth_call` context. There are many examples of these contracts used in modern protocols/dapps: "lens"-type helper contracts, quoters, NFT metadata, query helpers, etc.
 
+There's also a companion web app which lets you deploy zipped contracts from the browser: [bytecode.zip](https://bytecode.zip)
+
 ## Installation (foundry)
 
 ```bash
@@ -144,3 +146,8 @@ $> forge test -vvv
 
 ## Kudos
 Thanks to [@adlerjohn](https://github.com/adlerjohn) for [inflate-sol](https://github.com/adlerjohn/inflate-sol), which is the basis for the decompression used here.
+
+
+## Disclaimer
+
+This project is not endorsed or affiliated with [Dragonfly](https://dragonfly.xyz) 🫢.
