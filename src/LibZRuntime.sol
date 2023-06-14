@@ -206,10 +206,10 @@ library LibZRuntime {
                     // Return or revert
                     SWAP2
                     ISZERO
-                    PUSH2 0x4c
+                    PUSH1 0x4b
                     JUMPI
                     RETURN
-                    JUMPDEST // :0x4c
+                    JUMPDEST // :0x4b
                     REVERT
                 METADATA:
                     uint24(unzippedInitCodeSize)
@@ -226,7 +226,7 @@ library LibZRuntime {
             address(0), // To be filled in by RuntimeDeployer constructor
             hex"59523d3d601c8059039073",
             address(z),
-            hex"5af4813d3d82803e911561004c57f35bfd",
+            hex"5af4813d3d82803e9115604b57f35bfd",
             //// METADATA
             _safeCastToUint24(unzippedInitCodeSize),
             bytes32(unzippedInitCodeHash),
