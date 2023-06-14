@@ -150,4 +150,4 @@ Thanks to [@adlerjohn](https://github.com/adlerjohn) for [inflate-sol](https://g
 
 ## Disclaimer
 
-This project is not endorsed or affiliated with [Dragonfly](https://dragonfly.xyz) 🫢.
+This project is not endorsed by or affiliated with [Dragonfly](https://dragonfly.xyz) 🫢.
